@@ -4,8 +4,8 @@ Provides validated models for date and time slot booking
 with comprehensive validation rules.
 """
 
-from datetime import date, time, datetime
-from enum import Enum
+from datetime import date, timedelta
+from typing import Optional
 from pydantic import (
     BaseModel,
     Field,
@@ -14,15 +14,7 @@ from pydantic import (
     computed_field,
     ConfigDict
 )
-from .core import ExtractionMetadata
-
-
-class TimeSlot(str, Enum):
-    """Valid appointment time slots."""
-
-    EARLY_MORNING = "early_morning"
-    AFTERNOON = "afternoon"
-    EVENING = "evening"
+from models.core import ExtractionMetadata
 
 
 class Date(BaseModel):
@@ -49,6 +41,25 @@ class Date(BaseModel):
     metadata: ExtractionMetadata = Field(
         description="Extraction metadata"
     )
+
+    @field_validator('date_str')
+    @classmethod
+    def validate_date_string(cls, v: str) -> str:
+        """Validate date string is not a placeholder."""
+        if v.lower().strip() in ['none', 'unknown', 'n/a', 'tbd', 'later']:
+            raise ValueError("Date string cannot be placeholder")
+        return v.strip()
+
+    @field_validator('parsed_date')
+    @classmethod
+    def validate_parsed_date(cls, v: date) -> date:
+        """Validate parsed date is not in far past or future."""
+        today = date.today()
+        if v < today.replace(year=today.year - 1):
+            raise ValueError(f"Date {v} is too far in the past")
+        if v > today.replace(year=today.year + 2):
+            raise ValueError(f"Date {v} is too far in the future")
+        return v
 
     @model_validator(mode='after')
     def validate_date_reasonableness(self):
@@ -105,12 +116,19 @@ class Date(BaseModel):
 
 
 class Appointment(BaseModel):
-    """Complete appointment details."""
+    """Complete appointment details with dynamic time slots from Yawlit API."""
 
     model_config = ConfigDict(extra='forbid')
 
     date: Date = Field(description="Appointment date")
-    time_slot: TimeSlot = Field(description="Time slot")
+    time_slot: Optional[str] = Field(
+        default=None,
+        description="Time slot (fetched from Yawlit API)"
+    )
+    time_slot_id: Optional[str] = Field(
+        default=None,
+        description="Time slot ID from Yawlit API"
+    )
     service_type: str = Field(
         ...,
         min_length=1,
@@ -120,3 +138,44 @@ class Appointment(BaseModel):
     metadata: ExtractionMetadata = Field(
         description="Extraction metadata"
     )
+
+    @field_validator('time_slot')
+    @classmethod
+    def validate_time_slot(cls, v: Optional[str]) -> Optional[str]:
+        """Validate time slot format if provided.
+
+        Note: Actual availability should be checked against Yawlit API.
+        This just validates the format.
+        """
+        if v is None:
+            return v
+
+        cleaned = v.strip()
+        if cleaned.lower() in ['none', 'unknown', 'n/a', 'tbd', '']:
+            return None
+
+        return cleaned
+
+    @field_validator('service_type')
+    @classmethod
+    def validate_service_type(cls, v: str) -> str:
+        """Validate service type is not placeholder."""
+        cleaned = v.strip().lower()
+        if cleaned in ['none', 'unknown', 'n/a', 'tbd', '']:
+            raise ValueError("Service type cannot be placeholder")
+        if len(cleaned) < 3:
+            raise ValueError("Service type too short")
+        return v.strip()
+
+    @computed_field
+    @property
+    def is_same_day(self) -> bool:
+        """Check if appointment is today."""
+        return self.date.parsed_date == date.today()
+
+    @computed_field
+    @property
+    def is_next_day(self) -> bool:
+        """Check if appointment is tomorrow."""
+        tomorrow = date.today() + timedelta(days=1)
+        return self.date.parsed_date == tomorrow

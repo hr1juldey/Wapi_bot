@@ -8,7 +8,7 @@ import re
 from enum import Enum
 from typing import Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
-from .core import ExtractionMetadata
+from models.core import ExtractionMetadata
 
 
 class VehicleBrand(str, Enum):

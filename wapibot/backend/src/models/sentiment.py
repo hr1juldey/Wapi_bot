@@ -7,7 +7,7 @@ decision logic for conversation flow control.
 from typing import Dict
 from enum import Enum
 from pydantic import BaseModel, Field, model_validator, ConfigDict
-from .core import ExtractionMetadata
+from models.core import ExtractionMetadata
 
 
 class SentimentDimension(str, Enum):

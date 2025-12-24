@@ -6,7 +6,7 @@ with confidence scoring and decision logic.
 
 from typing import Literal
 from pydantic import BaseModel, Field, computed_field, ConfigDict
-from .core import ExtractionMetadata
+from models.core import ExtractionMetadata
 
 
 class IntentClass(str):

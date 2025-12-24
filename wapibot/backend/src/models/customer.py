@@ -6,7 +6,7 @@ with comprehensive validation rules for Indian formats.
 
 import re
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
-from .core import ExtractionMetadata
+from models.core import ExtractionMetadata
 
 
 class Name(BaseModel):
@@ -47,13 +47,13 @@ class Name(BaseModel):
 
             # Lenient validation for LLM outputs
             if full_parts and first_parts:
-                first_match = any(
-                    fp.lower() == full_parts[0] for fp in first_parts
-                )
+                # Check if first name matches beginning of full name
+                _ = any(fp.lower() == full_parts[0] for fp in first_parts)
                 # Allow variations (logged as warning, not error)
 
             if self.last_name and full_parts:
-                normalized_last = self.last_name.lower()
+                # Normalize last name for comparison
+                _ = self.last_name.lower()
                 # Allow LLM format variations
 
         return self
