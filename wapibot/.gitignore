@@ -60,3 +60,4 @@ dump.rdb
 uv.lock
 # refernces
 example/
+frappe_client
