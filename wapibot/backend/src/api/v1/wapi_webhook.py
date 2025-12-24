@@ -8,7 +8,10 @@ from typing import Optional
 
 from core.config import settings
 from schemas.wapi import WAPIWebhookPayload, WAPIResponse
+from schemas.chat import ChatRequest
 from workflows.shared.state import BookingState
+from workflows.v2_full_workflow import v2_full_workflow
+from clients.wapi import get_wapi_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/wapi", tags=["WAPI"])
@@ -97,11 +100,75 @@ async def wapi_webhook(
             f"WAPI webhook: {phone} - {message_id} - {body[:50]}..."
         )
 
-        # TODO: Convert WAPI format to BookingState
-        # TODO: Run workflow
-        # TODO: Send response via WAPI API
+        # Skip processing if not a new message
+        if not payload.message.is_new_message:
+            logger.debug(f"Skipping non-new message: {message_id}")
+            return WAPIResponse(status="skipped", message_id=message_id)
 
-        # For now, acknowledge receipt
+        # Skip empty messages
+        if not body.strip():
+            logger.debug(f"Skipping empty message: {message_id}")
+            return WAPIResponse(status="skipped", message_id=message_id)
+
+        # Create initial state for workflow
+        state: BookingState = {
+            "conversation_id": phone,
+            "user_message": body,
+            "history": [],  # TODO: Load from database
+            "customer": None,
+            "vehicle": None,
+            "appointment": None,
+            "sentiment": None,
+            "intent": None,
+            "intent_confidence": 0.0,
+            "current_step": "extract_name",
+            "completeness": 0.0,
+            "errors": [],
+            "response": "",
+            "should_confirm": False,
+            "should_proceed": True,
+            "service_request_id": None,
+            "service_request": None
+        }
+
+        # Run V2 full workflow
+        logger.info(f"Processing message through workflow: {phone}")
+        result = await v2_full_workflow.ainvoke(state)
+
+        # Extract response message
+        response_message = result.get("response", "")
+
+        if not response_message:
+            logger.warning(f"Workflow produced no response for {phone}")
+            response_message = "I'm processing your request. Please wait a moment."
+
+        # Send response via WAPI
+        wapi_client = get_wapi_client()
+
+        try:
+            # Build contact data for auto-creation
+            contact_data = {
+                "first_name": payload.contact.first_name or "Customer",
+                "last_name": payload.contact.last_name or "",
+                "email": payload.contact.email or "",
+                "country": payload.contact.country or "india",
+                "language_code": payload.contact.language_code or "en"
+            }
+
+            await wapi_client.send_message(
+                phone_number=phone,
+                message_body=response_message,
+                contact=contact_data
+            )
+
+            logger.info(f"Response sent to {phone}: {response_message[:50]}...")
+
+        except Exception as e:
+            logger.error(f"Failed to send WAPI response to {phone}: {e}", exc_info=True)
+            # Don't fail the webhook - message was processed
+            # WAPI will retry if needed
+
+        # Acknowledge receipt
         return WAPIResponse(
             status="received",
             message_id=message_id

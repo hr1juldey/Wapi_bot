@@ -95,14 +95,24 @@ class Settings(BaseSettings):
     enable_intent_classification: bool = True
 
     # Frappe Backend Configuration
-    frappe_base_url: str = "http://localhost:8002"
+    frappe_base_url: str = "https://yawlit.duckdns.org"
     frappe_api_key: str = ""
     frappe_api_secret: str = ""
 
-    # WAPI Webhook Configuration
+    # WAPI Configuration
+    wapi_base_url: str = "https://wapi.in.net"
+    wapi_vendor_uid: str = ""  # Vendor UID for WAPI API
+    wapi_bearer_token: str = ""  # Bearer token for WAPI API authentication
+    wapi_from_phone_number_id: str = ""  # Optional: Default phone number ID
     wapi_webhook_secret: str = ""  # HMAC secret for webhook signature validation
 
-    @field_validator('frappe_api_key', 'frappe_api_secret', 'wapi_webhook_secret')
+    @field_validator(
+        'frappe_api_key',
+        'frappe_api_secret',
+        'wapi_webhook_secret',
+        'wapi_vendor_uid',
+        'wapi_bearer_token'
+    )
     @classmethod
     def validate_production_secrets(cls, v: str, info) -> str:
         """Validate that required secrets are set in production."""
