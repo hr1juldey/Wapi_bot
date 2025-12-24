@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.dspy_config import dspy_configurator
 from core.warmup import warmup_service
+from db.connection import db_connection
 from api.router_registry import register_all_routes
 
 # Setup logging
@@ -30,6 +31,14 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("🚀 Starting WapiBot Backend V2...")
+
+    # Initialize database tables
+    try:
+        await db_connection.init_tables()
+        logger.info("✅ Database initialized")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        raise
 
     # Configure DSPy with selected LLM provider
     try:

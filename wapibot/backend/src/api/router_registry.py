@@ -6,9 +6,8 @@ Add all new routers here to keep main.py clean.
 from fastapi import FastAPI
 
 from api.health_api import router as health_router
-from api.v1.chat_endpoint import router as chat_router
+from api.v1.chat_endpoint import router as chat_router 
 from api.v1.wapi_webhook import router as wapi_router
-from api.v1.v2_full_chat_endpoint import router as v2_chat_router
 
 
 def register_all_routes(app: FastAPI) -> None:
@@ -26,9 +25,6 @@ def register_all_routes(app: FastAPI) -> None:
     # V1 API routes
     app.include_router(chat_router)
     app.include_router(wapi_router)
-
-    # V2 routes (atomic node architecture)
-    app.include_router(v2_chat_router)
 
     # Add more routers here as you build them:
     # app.include_router(booking_router)

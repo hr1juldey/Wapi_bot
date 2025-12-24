@@ -1,11 +1,16 @@
-"""Chat endpoint for frontend/testing."""
+"""V2 Full chat endpoint demonstrating atomic node composition.
+
+This endpoint uses the full V2 workflow with:
+- Extract → Confidence check → Scan → Merge → Response
+- Demonstrates all atomic nodes working together
+"""
 
 import logging
 from fastapi import APIRouter, HTTPException
 
 from schemas.chat import ChatRequest, ChatResponse
 from workflows.shared.state import BookingState
-from workflows.v2_chat import v2_chat_workflow
+from workflows.v2_full_workflow import v2_full_workflow
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
@@ -14,29 +19,70 @@ router = APIRouter(prefix="/api/v1", tags=["Chat"])
 @router.post("/chat", response_model=ChatResponse)
 async def process_chat(request: ChatRequest) -> ChatResponse:
     """
-    Process chat message and extract booking data.
+    Process chat message using V2 atomic node workflow.
+
+    This endpoint demonstrates the full V2 architecture:
+    - Atomic extract node with DSPy
+    - Confidence-based routing
+    - Retroactive scanning (V1's strength)
+    - Confidence-based merging (fixes V1's bug)
 
     **Flow:**
-    1. Create BookingState from request
-    2. Run LangGraph workflow (TODO: implement)
-    3. Return response with extracted data
+    1. Extract name (atomic extract node)
+    2. Check confidence (atomic confidence_gate node)
+    3. If low: scan history (atomic scan node) → merge (atomic merge node)
+    4. If high: proceed directly to response
+    5. Generate response
 
     **Example Request:**
     ```json
     {
       "conversation_id": "919876543210",
-      "user_message": "I want to book a car wash for my Honda City tomorrow"
+      "user_message": "Hi, I am Hrijul Dey",
+      "history": []
     }
     ```
 
     **Example Response:**
     ```json
     {
-      "message": "Great! I can help you. What's your name?",
+      "message": "Nice to meet you, Hrijul! 👋",
       "should_confirm": false,
       "completeness": 0.3,
       "extracted_data": {
-        "vehicle": {"brand": "Honda", "model": "City"}
+        "customer": {
+          "first_name": "Hrijul",
+          "last_name": "Dey",
+          "confidence": 0.9,
+          "extraction_method": "dspy"
+        }
+      }
+    }
+    ```
+
+    **Edge Case Example (low confidence → retroactive scan):**
+    ```json
+    {
+      "conversation_id": "919876543210",
+      "user_message": "Yes, I want to book",
+      "history": [
+        {"role": "user", "content": "Hi, I am Hrijul"},
+        {"role": "assistant", "content": "Hello! How can I help?"}
+      ]
+    }
+    ```
+
+    Response:
+    ```json
+    {
+      "message": "Nice to meet you, Hrijul! 👋 (I found your name from our earlier conversation)",
+      "completeness": 0.3,
+      "extracted_data": {
+        "customer": {
+          "first_name": "Hrijul",
+          "confidence": 0.8,
+          "extraction_method": "retroactive_scan"
+        }
       }
     }
     ```
@@ -68,8 +114,8 @@ async def process_chat(request: ChatRequest) -> ChatResponse:
             "service_request": None
         }
 
-        # Run V2 workflow (atomic nodes architecture)
-        result = await v2_chat_workflow.ainvoke(state)
+        # Run V2 full workflow (atomic nodes composition)
+        result = await v2_full_workflow.ainvoke(state)
 
         # Build response
         response = ChatResponse(
@@ -85,10 +131,12 @@ async def process_chat(request: ChatRequest) -> ChatResponse:
         )
 
         logger.info(f"Response: {response.message[:50]}...")
+        logger.info(f"Extracted: {result.get('customer')}")
+
         return response
 
     except Exception as e:
-        logger.error(f"Chat processing failed: {e}")
+        logger.error(f"Chat processing failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Chat processing error: {str(e)}"
