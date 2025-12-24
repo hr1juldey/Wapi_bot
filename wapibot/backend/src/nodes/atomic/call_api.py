@@ -20,6 +20,7 @@ import logging
 import httpx
 from typing import Any, Callable, Dict, Optional, Protocol
 from workflows.shared.state import BookingState
+from utils.field_utils import get_nested_field, set_nested_field
 
 logger = logging.getLogger(__name__)
 
@@ -63,33 +64,6 @@ class ResponseParser(Protocol):
             Parsed data (dict, list, str, etc.)
         """
         ...
-
-
-def get_nested_field(state: BookingState, field_path: str) -> Any:
-    """Get nested field from state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
-
-    return current
-
-
-def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
-    """Set nested field in state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts[:-1]:
-        if part not in current or current[part] is None:
-            current[part] = {}
-        current = current[part]
-
-    current[parts[-1]] = value
 
 
 def default_response_parser(response: httpx.Response) -> Any:

@@ -19,6 +19,7 @@ import logging
 from typing import Any, Callable, Optional, Protocol
 from workflows.shared.state import BookingState
 from core.config import settings
+from utils.field_utils import get_nested_field, set_nested_field
 
 logger = logging.getLogger(__name__)
 
@@ -38,53 +39,6 @@ class Extractor(Protocol):
     ) -> dict[str, Any]:
         """Extract data from conversation."""
         ...
-
-
-def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
-    """Set a nested field in state using dot notation.
-
-    Examples:
-        set_nested_field(state, "customer.first_name", "Hrijul")
-        set_nested_field(state, "vehicle.brand", "TATA")
-        set_nested_field(state, "appointment.date", "2025-12-25")
-
-    Args:
-        state: BookingState to modify
-        field_path: Dot-separated path (e.g., "customer.first_name")
-        value: Value to set
-    """
-    parts = field_path.split(".")
-
-    # Navigate to parent object
-    current = state
-    for part in parts[:-1]:
-        if part not in current or current[part] is None:
-            current[part] = {}
-        current = current[part]
-
-    # Set final field
-    current[parts[-1]] = value
-
-
-def get_nested_field(state: BookingState, field_path: str) -> Any:
-    """Get a nested field from state using dot notation.
-
-    Examples:
-        get_nested_field(state, "customer.first_name")
-        get_nested_field(state, "vehicle.brand")
-
-    Returns None if path doesn't exist.
-    """
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
-
-    return current
 
 
 async def node(

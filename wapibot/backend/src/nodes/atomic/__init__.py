@@ -19,6 +19,8 @@ These are the core nodes used in LangGraph workflows:
 4. scan.node - Retroactively scan history for ANY missing data
 5. merge.node - Merge ANY data with confidence-based strategy
 6. call_api.node - Call ANY HTTP API with request builders
+7. send_message.node - Send WhatsApp messages with ANY message builder
+8. transform.node - Transform ANY data with ANY transformer function
 
 ## Utility Modules (for configuration/introspection)
 
@@ -49,6 +51,8 @@ from nodes.atomic.confidence_gate import node as confidence_gate_node, get_gate_
 from nodes.atomic.scan import node as scan_node
 from nodes.atomic.merge import node as merge_node
 from nodes.atomic.call_api import node as call_api_node
+from nodes.atomic.send_message import node as send_message_node
+from nodes.atomic.transform import node as transform_node
 
 # Utility modules for introspection
 from nodes.atomic import read_signature
@@ -63,6 +67,8 @@ __all__ = [
     "scan_node",
     "merge_node",
     "call_api_node",
+    "send_message_node",
+    "transform_node",
 
     # Utility modules
     "read_signature",
