@@ -1,0 +1,28 @@
+"""Central router registry for all API endpoints.
+
+Add all new routers here to keep main.py clean.
+"""
+
+from fastapi import FastAPI
+
+from api.v1.chat_endpoint import router as chat_router
+from api.v1.wapi_webhook import router as wapi_router
+
+
+def register_all_routes(app: FastAPI) -> None:
+    """Register all API routers with the FastAPI app.
+
+    Add new routers here as you create them.
+    Keeps main.py clean and organized.
+
+    Args:
+        app: FastAPI application instance
+    """
+    # V1 API routes
+    app.include_router(chat_router)
+    app.include_router(wapi_router)
+
+    # Add more routers here as you build them:
+    # app.include_router(booking_router)
+    # app.include_router(analytics_router)
+    # app.include_router(admin_router)

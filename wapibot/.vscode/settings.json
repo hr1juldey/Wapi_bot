@@ -5,7 +5,7 @@
   // "files.autoSave": "off",
   "editor.formatOnSave": true,
   // Keep unlimited editors open
-  "workbench.editor.enablePreview": false,
+  "workbench.editor.enablePreview": true,
   "workbench.editor.limit.enabled": true,
   "workbench.editor.limit.perEditorGroup": false,
   "workbench.editor.limit.value": 1000,

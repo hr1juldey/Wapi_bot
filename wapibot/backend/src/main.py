@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.dspy_config import dspy_configurator
+from api.router_registry import register_all_routes
 
 # Setup logging
 logging.basicConfig(
@@ -58,6 +59,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register all API routers (centralized in router_registry.py)
+register_all_routes(app)
 
 
 @app.get("/")
