@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 
 from dspy_signatures.extraction.phone_signature import PhoneExtractionSignature
 from utils.history_utils import create_dspy_history
-from core.config import settings
+from utils.validation_utils import map_confidence_to_float
 
 
 class PhoneExtractor(dspy.Module):
@@ -53,13 +53,8 @@ class PhoneExtractor(dspy.Module):
         )
 
         # Map confidence string to float
-        confidence_map = {
-            "low": settings.confidence_low,
-            "medium": settings.confidence_medium,
-            "high": settings.confidence_high
-        }
-        confidence_str = getattr(result, "confidence", "medium").lower()
-        confidence_float = confidence_map.get(confidence_str, settings.confidence_medium)
+        confidence_str = getattr(result, "confidence", "medium")
+        confidence_float = map_confidence_to_float(confidence_str)
 
         return {
             "phone_number": getattr(result, "phone_number", "").strip(),

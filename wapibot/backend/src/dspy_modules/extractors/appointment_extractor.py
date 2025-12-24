@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 
 from dspy_signatures.extraction.appointment_signature import AppointmentExtractionSignature
 from utils.history_utils import create_dspy_history
-from core.config import settings
+from utils.validation_utils import map_confidence_to_float
 
 
 class AppointmentExtractor(dspy.Module):
@@ -45,13 +45,8 @@ class AppointmentExtractor(dspy.Module):
             context=context
         )
 
-        confidence_map = {
-            "low": settings.confidence_low,
-            "medium": settings.confidence_medium,
-            "high": settings.confidence_high
-        }
-        confidence_str = getattr(result, "confidence", "medium").lower()
-        confidence_float = confidence_map.get(confidence_str, settings.confidence_medium)
+        confidence_str = getattr(result, "confidence", "medium")
+        confidence_float = map_confidence_to_float(confidence_str)
 
         return {
             "date_str": getattr(result, "date_str", "").strip(),

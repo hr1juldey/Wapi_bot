@@ -1,14 +1,15 @@
 """Appointment-related domain models.
 
 Provides validated models for date and time slot booking
-with comprehensive validation rules.
+with comprehensive validation rules using Pydantic v2 types.
 """
 
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, Annotated
 from pydantic import (
     BaseModel,
     Field,
+    FutureDate,
     field_validator,
     model_validator,
     computed_field,
@@ -53,32 +54,36 @@ class Date(BaseModel):
     @field_validator('parsed_date')
     @classmethod
     def validate_parsed_date(cls, v: date) -> date:
-        """Validate parsed date is not in far past or future."""
+        """Validate appointment date is reasonable for booking.
+
+        Appointments should be:
+        - Today or in the future (not in the past)
+        - Within booking window (typically 6 months)
+        """
         today = date.today()
-        if v < today.replace(year=today.year - 1):
-            raise ValueError(f"Date {v} is too far in the past")
-        if v > today.replace(year=today.year + 2):
-            raise ValueError(f"Date {v} is too far in the future")
+
+        # Don't allow past dates (except today)
+        if v < today:
+            raise ValueError(
+                f"Appointment date {v} is in the past. "
+                "Appointments must be today or in the future."
+            )
+
+        # Reasonable booking window (6 months ahead)
+        max_booking_days = 180  # ~6 months
+        future_limit = today + timedelta(days=max_booking_days)
+
+        if v > future_limit:
+            raise ValueError(
+                f"Appointment date {v} is too far in the future. "
+                f"Please book within {max_booking_days} days."
+            )
+
         return v
 
     @model_validator(mode='after')
     def validate_date_reasonableness(self):
-        """Validate date is within reasonable range."""
-        today = date.today()
-        max_years_ahead = 3
-        max_years_back = 10
-
-        future_limit = today.replace(year=today.year + max_years_ahead)
-        past_limit = today.replace(year=today.year - max_years_back)
-
-        if self.parsed_date > future_limit:
-            raise ValueError(
-                f"Date {self.parsed_date} too far in future"
-            )
-        if self.parsed_date < past_limit:
-            raise ValueError(
-                f"Date {self.parsed_date} too far in past"
-            )
+        """Validate date is a real calendar date."""
 
         # Validate calendar date
         try:

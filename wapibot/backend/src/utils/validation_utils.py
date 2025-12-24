@@ -5,14 +5,8 @@ Provides helpers for validating phone numbers, emails, vehicle brands, etc.
 
 import re
 from typing import Optional
-
-
-# Vehicle brands list (for validation)
-VEHICLE_BRANDS = {
-    "tata", "mahindra", "maruti", "suzuki", "honda", "toyota", "hyundai",
-    "ford", "chevrolet", "nissan", "volkswagen", "bmw", "mercedes", "audi",
-    "kia", "mg", "renault", "skoda", "jeep", "fiat"
-}
+from models.vehicle import VEHICLE_BRANDS
+from core.config import settings
 
 
 def is_vehicle_brand(name: str) -> bool:
@@ -118,3 +112,26 @@ def normalize_phone(phone: str) -> Optional[str]:
         return cleaned
 
     return None
+
+
+def map_confidence_to_float(confidence_str: str) -> float:
+    """Map confidence string to float value.
+
+    Args:
+        confidence_str: Confidence level ('low', 'medium', 'high')
+
+    Returns:
+        Float confidence score from settings
+
+    Example:
+        >>> map_confidence_to_float("high")
+        0.9
+        >>> map_confidence_to_float("invalid")
+        0.6  # defaults to medium
+    """
+    confidence_map = {
+        "low": settings.confidence_low,
+        "medium": settings.confidence_medium,
+        "high": settings.confidence_high
+    }
+    return confidence_map.get(confidence_str.lower(), settings.confidence_medium)

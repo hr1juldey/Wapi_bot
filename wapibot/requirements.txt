@@ -2,7 +2,9 @@
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
-
+pydantic-extra-types >= 2.10.6
+phonenumbers>=9.0.21
+email-validator>=2.3.0
 # DSPy and LLM Dependencies
 dspy-ai>=3.0.0
 litellm>=1.40.0

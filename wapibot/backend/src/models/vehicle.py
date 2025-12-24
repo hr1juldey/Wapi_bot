@@ -11,6 +11,22 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 from models.core import ExtractionMetadata
 
 
+# Valid Indian state RTO codes
+INDIAN_STATE_CODES = {
+    'AN', 'AP', 'AR', 'AS', 'BR', 'CG', 'CH', 'DD', 'DL', 'DN',
+    'GA', 'GJ', 'HP', 'HR', 'JH', 'JK', 'KA', 'KL', 'LA', 'LD',
+    'MH', 'ML', 'MN', 'MP', 'MZ', 'NL', 'OD', 'OR', 'PB', 'PY',
+    'RJ', 'SK', 'TN', 'TR', 'TS', 'UK', 'UP', 'WB'
+}
+
+# Known vehicle brands for regex matching (lowercase)
+VEHICLE_BRANDS = [
+    "tata", "mahindra", "maruti", "suzuki", "honda", "toyota", "hyundai",
+    "ford", "chevrolet", "nissan", "volkswagen", "bmw", "mercedes", "audi",
+    "kia", "mg", "renault", "skoda", "jeep", "fiat", "volvo", "jaguar"
+]
+
+
 class VehicleBrand(str, Enum):
     """Vehicle brands including Indian manufacturers."""
 
@@ -74,18 +90,64 @@ class VehicleDetails(BaseModel):
         description="Extraction metadata"
     )
 
+    @field_validator('number_plate')
+    @classmethod
+    def validate_indian_license_plate(cls, v: Optional[str]) -> Optional[str]:
+        """Validate and normalize Indian license plate format.
+
+        Supports:
+        - Standard format: WB 06 AF 1234 -> WB06AF1234
+        - BH series format: 22 BH 1234 AB -> 22BH1234AB
+
+        Args:
+            v: Raw license plate string
+
+        Returns:
+            Normalized plate (uppercase, no spaces/hyphens) or None
+
+        Raises:
+            ValueError: If plate format is invalid
+        """
+        if v is None:
+            return None
+
+        # Reject placeholder values
+        if v.strip().lower() in ['none', 'unknown', 'n/a', 'tbd', '']:
+            return None
+
+        # Normalize: remove spaces, hyphens, dots, convert to uppercase
+        plate = v.replace(' ', '').replace('-', '').replace('.', '').upper()
+
+        # BH series format: 00BH0000XX (e.g., 22BH1234AB)
+        # Pattern: 2 digits + BH + 4 digits + 2 letters
+        bh_pattern = r'^\d{2}BH\d{4}[A-Z]{2}$'
+        if re.match(bh_pattern, plate):
+            return plate
+
+        # Indian standard format: XX00XX0000 (e.g., WB06AF1234)
+        # Pattern: 2 letters (state code) + 2 digits + 1-2 letters + 4 digits
+        standard_pattern = r'^([A-Z]{2})(\d{2})([A-Z]{1,2})(\d{4})$'
+        match = re.match(standard_pattern, plate)
+        if match:
+            state_code = match.group(1)
+            # Validate state code against known Indian RTO codes
+            if state_code in INDIAN_STATE_CODES:
+                return plate
+            else:
+                raise ValueError(
+                    f"Invalid Indian state code '{state_code}' in license plate '{v}'. "
+                    f"Must be a valid RTO code (WB, DL, MH, etc.)"
+                )
+
+        # Invalid format
+        raise ValueError(
+            f"Invalid Indian license plate format: '{v}'. "
+            f"Expected formats: 'WB06AF1234' (standard) or '22BH1234AB' (BH series)"
+        )
+
     @model_validator(mode='after')
     def validate_vehicle_details(self):
         """Validate vehicle details consistency."""
-        # Number plate validation (if present)
-        if self.number_plate and self.number_plate.strip():
-            plate_cleaned = self.number_plate \
-                .replace(' ', '').replace('-', '') \
-                .replace('.', '').upper()
-
-            if not (1 <= len(plate_cleaned) <= 15):
-                raise ValueError("Number plate length unreasonable")
-
         # Model name validation (if present)
         if self.model and len(self.model.strip()) < 1:
             raise ValueError("Vehicle model cannot be empty")
@@ -97,13 +159,13 @@ class VehicleDetails(BaseModel):
 
         return self
 
-    @field_validator('brand', 'model', 'number_plate')
+    @field_validator('brand', 'model')
     @classmethod
     def normalize_vehicle_fields(
         cls,
         v: Optional[Union[str, VehicleBrand]]
     ) -> Optional[Union[str, VehicleBrand]]:
-        """Normalize vehicle fields (None allowed)."""
+        """Normalize brand and model fields (None allowed)."""
         if v is None:
             return None
 
