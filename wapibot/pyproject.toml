@@ -33,6 +33,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.12",
     "pytz>=2023.3",
+    "qrcode[pil]>=7.4.2",
     "redis>=5.0.0",
     "requests>=2.31.0",
     "ruff>=0.1.0",
