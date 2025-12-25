@@ -36,8 +36,13 @@ async def calculate_price(state: BookingState) -> BookingState:
 
 
 async def send_confirmation(state: BookingState) -> BookingState:
-    """Send booking confirmation for user approval."""
-    return await send_message_node(state, BookingConfirmationBuilder())
+    """Send booking confirmation for user approval, then pause for input."""
+    result = await send_message_node(state, BookingConfirmationBuilder())
+
+    # Pause and wait for user's confirmation
+    result["should_proceed"] = False
+    result["current_step"] = "awaiting_booking_confirmation"
+    return result
 
 
 async def extract_confirmation(state: BookingState) -> BookingState:
@@ -119,7 +124,23 @@ async def send_unclear(state: BookingState) -> BookingState:
     def unclear_message(s):
         return "Please reply with YES to confirm or NO to cancel the booking."
 
-    return await send_message_node(state, unclear_message)
+    result = await send_message_node(state, unclear_message)
+    result["should_proceed"] = False  # Stop and wait for next user message
+    result["current_step"] = "awaiting_booking_confirmation"  # Resume here on next message
+    return result
+
+
+def route_booking_entry(state: BookingState) -> str:
+    """Route based on whether we're resuming or starting fresh."""
+    current_step = state.get("current_step", "")
+    has_price = state.get("total_price") is not None
+
+    if current_step == "awaiting_booking_confirmation" and has_price:
+        logger.info("🔀 Resuming booking confirmation - skipping price calc")
+        return "extract_confirmation"
+    else:
+        logger.info("🔀 Starting fresh booking flow")
+        return "calculate_price"
 
 
 def create_booking_group() -> StateGraph:
@@ -127,6 +148,7 @@ def create_booking_group() -> StateGraph:
     workflow = StateGraph(BookingState)
 
     # Add nodes
+    workflow.add_node("entry", lambda s: s)  # Pass-through entry
     workflow.add_node("calculate_price", calculate_price)
     workflow.add_node("send_confirmation", send_confirmation)
     workflow.add_node("extract_confirmation", extract_confirmation)
@@ -135,10 +157,22 @@ def create_booking_group() -> StateGraph:
     workflow.add_node("send_cancelled", send_cancelled)
     workflow.add_node("send_unclear", send_unclear)
 
-    # Flow
-    workflow.set_entry_point("calculate_price")
+    # Start at entry for routing
+    workflow.set_entry_point("entry")
+
+    # Route based on resume state
+    workflow.add_conditional_edges(
+        "entry",
+        route_booking_entry,
+        {
+            "calculate_price": "calculate_price",
+            "extract_confirmation": "extract_confirmation"
+        }
+    )
+
     workflow.add_edge("calculate_price", "send_confirmation")
-    workflow.add_edge("send_confirmation", "extract_confirmation")
+    # After showing confirmation, END and wait for user input (pause)
+    workflow.add_edge("send_confirmation", END)
 
     workflow.add_conditional_edges(
         "extract_confirmation",

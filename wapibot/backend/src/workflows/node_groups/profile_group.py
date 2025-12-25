@@ -36,6 +36,7 @@ async def send_vehicle_options(state: BookingState) -> BookingState:
     """Send vehicle selection options."""
     result = await send_message_node(state, VehicleOptionsBuilder())
     result["should_proceed"] = False  # Need user input, stop here
+    result["current_step"] = "awaiting_vehicle_selection"  # Resume at vehicle selection
     return result
 
 

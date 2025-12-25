@@ -14,16 +14,24 @@ Replaces 6 old nodes:
 - route_vehicle_selection
 """
 
+import logging
 from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.selection.generic_handler import handle_selection, route_after_selection
 from nodes.atomic.send_message import node as send_message_node
 from nodes.message_builders.vehicle_options import VehicleOptionsBuilder
 
+logger = logging.getLogger(__name__)
+
 
 async def show_vehicle_options(state: BookingState) -> BookingState:
-    """Display vehicle options to user."""
-    return await send_message_node(state, VehicleOptionsBuilder())
+    """Display vehicle options to user, then pause for input."""
+    result = await send_message_node(state, VehicleOptionsBuilder())
+
+    # Pause and wait for user's vehicle selection
+    result["should_proceed"] = False
+    result["current_step"] = "awaiting_vehicle_selection"
+    return result
 
 
 async def process_vehicle_selection(state: BookingState) -> BookingState:
@@ -41,26 +49,34 @@ async def send_vehicle_error(state: BookingState) -> BookingState:
     error_msg = state.get("selection_error", "Invalid selection. Please try again.")
     result = await send_message_node(state, lambda s: error_msg)
     result["should_proceed"] = False  # Stop and wait for next user message
+    result["current_step"] = "awaiting_vehicle_selection"  # Resume here on next message
     return result
 
 
-def check_if_vehicle_needed(state: BookingState) -> str:
-    """Check if vehicle selection is needed.
+def route_vehicle_entry(state: BookingState) -> str:
+    """Route based on whether we're resuming or starting fresh."""
+    current_step = state.get("current_step", "")
+    has_options = bool(state.get("vehicle_options"))
 
-    Returns:
-        - "skip": Vehicle already selected, no action needed
-        - "select": Need to show options and get user selection
-    """
-    # If vehicle already selected, skip this group
+    # If resuming vehicle selection, go directly to process
+    if current_step == "awaiting_vehicle_selection" and has_options:
+        logger.info("🔀 Resuming vehicle selection - skipping show")
+        return "process_selection"
+
+    # Check if vehicle already selected (skip entire group)
     if state.get("vehicle_selected", False):
+        logger.info("🔀 Vehicle already selected - skipping")
         return "skip"
 
-    # If no vehicle options, skip (shouldn't happen)
+    # No vehicle options means skip
     vehicle_options = state.get("vehicle_options", [])
     if len(vehicle_options) == 0:
+        logger.info("🔀 No vehicle options - skipping")
         return "skip"
 
-    return "select"
+    # Need to show options
+    logger.info("🔀 Showing vehicle options")
+    return "show_options"
 
 
 async def skip_vehicle_selection(state: BookingState) -> BookingState:
@@ -82,26 +98,29 @@ def create_vehicle_group() -> StateGraph:
     workflow = StateGraph(BookingState)
 
     # Add nodes
+    workflow.add_node("entry", lambda s: s)  # Pass-through entry
     workflow.add_node("skip_selection", skip_vehicle_selection)
     workflow.add_node("show_options", show_vehicle_options)
     workflow.add_node("process_selection", process_vehicle_selection)
     workflow.add_node("send_error", send_vehicle_error)
 
-    # Entry point: check if selection is needed
-    workflow.set_entry_point("skip_selection")
+    # Start at entry for routing
+    workflow.set_entry_point("entry")
 
-    # Conditional routing based on whether vehicle is already selected
+    # Route based on resume state
     workflow.add_conditional_edges(
-        "skip_selection",
-        check_if_vehicle_needed,
+        "entry",
+        route_vehicle_entry,
         {
-            "skip": END,  # Vehicle already selected, end immediately
-            "select": "show_options"  # Need to show options
+            "skip": "skip_selection",
+            "show_options": "show_options",
+            "process_selection": "process_selection"
         }
     )
 
-    # Show options, then process selection
-    workflow.add_edge("show_options", "process_selection")
+    workflow.add_edge("skip_selection", END)
+    # After showing options, END and wait for user input (pause)
+    workflow.add_edge("show_options", END)
 
     # After processing selection
     workflow.add_conditional_edges(

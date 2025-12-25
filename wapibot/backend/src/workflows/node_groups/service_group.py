@@ -59,8 +59,13 @@ async def fetch_services(state: BookingState) -> BookingState:
 
 
 async def show_service_catalog(state: BookingState) -> BookingState:
-    """Display service catalog to user."""
-    return await send_message_node(state, ServiceCatalogBuilder())
+    """Display service catalog to user, then pause for user input."""
+    result = await send_message_node(state, ServiceCatalogBuilder())
+
+    # Pause and wait for user's service selection
+    result["should_proceed"] = False
+    result["current_step"] = "awaiting_service_selection"
+    return result
 
 
 async def process_service_selection(state: BookingState) -> BookingState:
@@ -78,7 +83,21 @@ async def send_service_error(state: BookingState) -> BookingState:
     error_msg = state.get("selection_error", "Invalid selection. Please try again.")
     result = await send_message_node(state, lambda s: error_msg)
     result["should_proceed"] = False  # Stop and wait for next user message
+    result["current_step"] = "awaiting_service_selection"  # Resume here on next message
     return result
+
+
+def route_service_entry(state: BookingState) -> str:
+    """Route based on whether we're resuming or starting fresh."""
+    current_step = state.get("current_step", "")
+    has_services = bool(state.get("service_options"))
+
+    if current_step == "awaiting_service_selection" and has_services:
+        logger.info("🔀 Resuming service selection - skipping fetch")
+        return "process_selection"
+    else:
+        logger.info("🔀 Starting fresh service fetch")
+        return "fetch_services"
 
 
 def create_service_group() -> StateGraph:
@@ -86,15 +105,28 @@ def create_service_group() -> StateGraph:
     workflow = StateGraph(BookingState)
 
     # Add nodes
+    workflow.add_node("entry", lambda s: s)  # Pass-through entry
     workflow.add_node("fetch_services", fetch_services)
     workflow.add_node("show_catalog", show_service_catalog)
     workflow.add_node("process_selection", process_service_selection)
     workflow.add_node("send_error", send_service_error)
 
-    # Flow
-    workflow.set_entry_point("fetch_services")
+    # Start at entry for routing
+    workflow.set_entry_point("entry")
+
+    # Route based on resume state
+    workflow.add_conditional_edges(
+        "entry",
+        route_service_entry,
+        {
+            "fetch_services": "fetch_services",
+            "process_selection": "process_selection"
+        }
+    )
+
     workflow.add_edge("fetch_services", "show_catalog")
-    workflow.add_edge("show_catalog", "process_selection")
+    # After showing catalog, END and wait for user input (pause)
+    workflow.add_edge("show_catalog", END)
 
     workflow.add_conditional_edges(
         "process_selection",
