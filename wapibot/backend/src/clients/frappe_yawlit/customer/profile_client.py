@@ -1,6 +1,10 @@
 """Customer profile client for Frappe API.
 
 Handles customer profile operations including profile management and vehicle management.
+
+SECURITY: All requests automatically include API key authentication via
+Authorization header (configured in .env.txt: FRAPPE_API_KEY, FRAPPE_API_SECRET).
+Phone-based methods are secured at the Frappe backend level.
 """
 
 from typing import Dict, Any
@@ -24,7 +28,7 @@ class CustomerProfileClient:
         self.http = http_client
 
     async def get_profile(self) -> Dict[str, Any]:
-        """Get customer profile.
+        """Get customer profile (requires session).
 
         Returns:
             Customer profile data including personal details and preferences
@@ -39,6 +43,63 @@ class CustomerProfileClient:
             )
         except (NotFoundError, FrappeAPIError) as e:
             logger.error(f"Error fetching customer profile: {e}")
+            raise
+
+    async def get_profile_by_phone(self, phone_number: str) -> Dict[str, Any]:
+        """Get customer profile by phone number (no session required).
+
+        This method is designed for WhatsApp bot integration where
+        session-based authentication is not available. The Frappe backend
+        will lookup the customer by phone and return their profile.
+
+        SECURITY: This request includes API key authentication. The Frappe
+        backend validates the API key and should implement rate limiting
+        and phone number validation to prevent abuse.
+
+        Args:
+            phone_number: Customer phone number (10 digits, no country code)
+                         Example: "6290818033" (not "+916290818033")
+
+        Returns:
+            Customer profile data in Frappe response format:
+            {
+                "message": {
+                    "success": True,
+                    "profile": {
+                        "customer_uuid": "LIT-CUST-...",
+                        "full_name": "John Doe",
+                        "email": "john@example.com",
+                        "mobile_no": "9876543210",
+                        "address": "123 Main St",
+                        "city": "Bangalore",
+                        "state": "Karnataka",
+                        "pincode": "560001",
+                        "customer_tier": "Bronze",
+                        "vehicles": [...],
+                        "addresses": [...],
+                        "needs_email": False,
+                        "pending_email_verification": False
+                    }
+                }
+            }
+
+        Raises:
+            NotFoundError: Customer not found
+            FrappeAPIError: API error (e.g., incomplete profile)
+
+        Example:
+            >>> profile = await client.customer_profile.get_profile_by_phone("6290818033")
+            >>> profile_data = profile["message"]["profile"]
+            >>> print(profile_data["full_name"])
+            >>> print(f"Vehicles: {len(profile_data['vehicles'])}")
+        """
+        try:
+            return await self.http.post(
+                "/api/method/yawlit_automotive_services.api.customer_portal.get_profile_by_phone",
+                {"phone_number": phone_number}
+            )
+        except (NotFoundError, FrappeAPIError) as e:
+            logger.error(f"Error fetching customer profile by phone {phone_number}: {e}")
             raise
 
     async def complete_profile(self, data: Dict[str, Any]) -> Dict[str, Any]:

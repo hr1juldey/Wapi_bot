@@ -115,7 +115,197 @@ async def check_resume_point(state: BookingState) -> str:
 
 
 # ============================================================================
-# CUSTOMER LOOKUP & ROUTING
+# CUSTOMER PROFILE FETCH (ALL-IN-ONE: lookup + profile + vehicles)
+# ============================================================================
+
+async def fetch_complete_profile_node(state: BookingState) -> BookingState:
+    """Fetch complete customer profile including vehicles using get_profile_by_phone.
+
+    This single node replaces the old multi-step flow:
+    - lookup_customer → check_customer_exists
+    - check_profile_complete → get_profile
+    - fetch_vehicles → get_vehicles
+
+    Now it's just ONE API call: get_profile_by_phone(phone)
+
+    Returns everything in one response:
+    - Customer details (UUID, name, email, etc.)
+    - Profile completeness validation
+    - Vehicles array
+    - Addresses array
+
+    Sets state fields:
+    - customer: Customer data with UUID
+    - profile_complete: True/False
+    - profile_error: Error message if profile incomplete
+    - vehicle: Auto-selected vehicle if only 1, else None
+    - vehicle_options: List of vehicles for selection
+    - vehicle_selected: True if auto-selected, False if needs selection
+    """
+    import logging
+    from models.customer import Phone
+    from models.core import ExtractionMetadata
+
+    logger = logging.getLogger(__name__)
+    client = get_yawlit_client()
+
+    # Normalize phone number (remove +91/91 prefix)
+    raw_phone = state.get("conversation_id", "")
+    phone_model = Phone(
+        phone_number=raw_phone,
+        metadata=ExtractionMetadata(
+            confidence=1.0,
+            extraction_method="direct",
+            extraction_source="wapi_webhook"
+        )
+    )
+    normalized_phone = phone_model.phone_number
+
+    logger.info(f"📞 Fetching complete profile for: {raw_phone} → {normalized_phone}")
+
+    # Call the new get_profile_by_phone endpoint
+    try:
+        response = await client.customer_profile.get_profile_by_phone(normalized_phone)
+        logger.info(f"🔍 Raw profile response keys: {list(response.keys())}")
+
+        # Check if customer exists
+        if not response.get("message", {}).get("success"):
+            # Customer not found
+            error_msg = response.get("message", {}).get("message", "Customer not found")
+            logger.warning(f"⚠️ Customer not found: {error_msg}")
+            state["customer"] = None
+            state["profile_complete"] = False
+            state["vehicle_selected"] = False
+            state["vehicle_options"] = []
+            return state
+
+        # Extract profile data
+        profile = response["message"]["profile"]
+        logger.info(f"✅ Profile loaded: {profile.get('full_name')}")
+
+        # Populate customer data
+        state["customer"] = {
+            "customer_uuid": profile.get("customer_uuid"),
+            "first_name": profile.get("full_name", "").split()[0] if profile.get("full_name") else "",
+            "last_name": " ".join(profile.get("full_name", "").split()[1:]) if profile.get("full_name") and len(profile.get("full_name", "").split()) > 1 else "",
+            "phone": profile.get("mobile_no"),
+            "email": profile.get("email"),
+            "customer_status": "Active",
+            "confidence": 1.0
+        }
+
+        # Validate profile completeness
+        required_fields = ["customer_uuid", "full_name", "email", "mobile_no", "city", "state", "pincode"]
+        missing_fields = [field for field in required_fields if not profile.get(field)]
+
+        if missing_fields:
+            logger.warning(f"⚠️ Profile incomplete - missing: {missing_fields}")
+            state["profile_complete"] = False
+            state["missing_profile_fields"] = missing_fields
+        else:
+            logger.info("✅ Profile is complete")
+            state["profile_complete"] = True
+
+        # Process vehicles
+        vehicles = profile.get("vehicles", [])
+        logger.info(f"🚗 Found {len(vehicles)} vehicle(s)")
+
+        if len(vehicles) == 0:
+            # No vehicles - user needs to add one
+            state["vehicle"] = None
+            state["vehicle_options"] = []
+            state["vehicle_selected"] = False
+            logger.info("No vehicles found - user needs to add vehicle")
+
+        elif len(vehicles) == 1:
+            # Auto-select the only vehicle
+            vehicle = vehicles[0]
+            state["vehicle"] = {
+                "vehicle_id": vehicle.get("name"),
+                "vehicle_number": vehicle.get("vehicle_number"),
+                "vehicle_make": vehicle.get("vehicle_make"),
+                "vehicle_model": vehicle.get("vehicle_model"),
+                "vehicle_type": vehicle.get("vehicle_type"),
+                "is_primary": vehicle.get("is_primary", 1)
+            }
+            state["vehicle_options"] = []
+            state["vehicle_selected"] = True
+            logger.info(f"✅ Auto-selected vehicle: {vehicle.get('vehicle_number')}")
+
+        else:
+            # Multiple vehicles - user needs to choose
+            state["vehicle"] = None
+            state["vehicle_options"] = [
+                {
+                    "vehicle_id": v.get("name"),
+                    "vehicle_number": v.get("vehicle_number"),
+                    "vehicle_make": v.get("vehicle_make"),
+                    "vehicle_model": v.get("vehicle_model"),
+                    "vehicle_type": v.get("vehicle_type"),
+                    "is_primary": v.get("is_primary", 0)
+                }
+                for v in vehicles
+            ]
+            state["vehicle_selected"] = False
+            logger.info(f"Multiple vehicles found - user needs to select from {len(vehicles)} options")
+
+        # Store addresses for later use in booking
+        state["addresses"] = profile.get("addresses", [])
+
+        return state
+
+    except Exception as e:
+        logger.error(f"❌ Error fetching profile: {e}", exc_info=True)
+        state["customer"] = None
+        state["profile_complete"] = False
+        state["profile_error"] = str(e)
+        state["vehicle_selected"] = False
+        state["vehicle_options"] = []
+        return state
+
+
+async def route_after_profile_fetch(state: BookingState) -> str:
+    """Route based on profile fetch results.
+
+    Returns:
+        - "customer_not_found": Customer doesn't exist (new user)
+        - "profile_incomplete": Profile exists but missing required fields
+        - "no_vehicles": Profile complete but no vehicles
+        - "vehicle_selection_required": Multiple vehicles, need user to choose
+        - "profile_ready": Profile complete with vehicle selected
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    customer = state.get("customer")
+    if not customer:
+        logger.info("🔀 Route: customer_not_found")
+        return "customer_not_found"
+
+    profile_complete = state.get("profile_complete", False)
+    if not profile_complete:
+        logger.info("🔀 Route: profile_incomplete")
+        return "profile_incomplete"
+
+    # Profile is complete, check vehicles
+    vehicle_options = state.get("vehicle_options", [])
+    vehicle_selected = state.get("vehicle_selected", False)
+
+    if state.get("vehicle") is None and len(vehicle_options) == 0:
+        logger.info("🔀 Route: no_vehicles")
+        return "no_vehicles"
+
+    if not vehicle_selected and len(vehicle_options) > 0:
+        logger.info("🔀 Route: vehicle_selection_required")
+        return "vehicle_selection_required"
+
+    logger.info("🔀 Route: profile_ready")
+    return "profile_ready"
+
+
+# ============================================================================
+# CUSTOMER LOOKUP & ROUTING (OLD - REPLACED BY fetch_complete_profile_node)
 # ============================================================================
 
 async def lookup_customer_node(state: BookingState) -> BookingState:
@@ -171,6 +361,121 @@ async def lookup_customer_node(state: BookingState) -> BookingState:
 
 
 # ============================================================================
+# PROFILE COMPLETENESS CHECK
+# ============================================================================
+
+async def check_profile_complete_node(state: BookingState) -> BookingState:
+    """Check if customer profile has all required fields completed.
+
+    Calls get_profile() and validates that essential fields are present.
+    Sets state["profile_complete"] to True/False based on validation.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    client = get_yawlit_client()
+
+    customer = state.get("customer", {})
+    if not customer or not customer.get("customer_uuid"):
+        logger.warning("No customer found - cannot check profile")
+        state["profile_complete"] = False
+        return state
+
+    # Fetch full profile
+    state = await call_frappe_node(
+        state,
+        client.customer_profile.get_profile,
+        "profile_response",
+        state_extractor=lambda s: {}  # No params needed - uses auth token
+    )
+
+    profile_response = state.get("profile_response", {})
+
+    # Log raw response for debugging
+    logger.info(f"🔍 Raw profile_response: {profile_response}")
+
+    # Check for Frappe error responses
+    if isinstance(profile_response.get("message"), dict):
+        if profile_response["message"].get("success") is False:
+            error_msg = profile_response["message"].get("message", "Unknown error")
+            logger.error(f"❌ Profile fetch error: {error_msg}")
+            state["profile_complete"] = False
+            state["profile_error"] = error_msg
+            return state
+
+    # Extract profile data
+    profile_data = profile_response.get("message", {})
+    if not profile_data:
+        profile_data = profile_response.get("data", {})
+
+    logger.info(f"🔍 Profile data keys: {list(profile_data.keys())}")
+
+    # Define required fields for a complete profile
+    required_fields = [
+        "customer_name",
+        "email",
+        "phone_number",
+        "default_address",
+        "city",
+        "state",
+        "pincode"
+    ]
+
+    # Check if all required fields are present and non-empty
+    missing_fields = []
+    for field in required_fields:
+        value = profile_data.get(field)
+        if not value or (isinstance(value, str) and not value.strip()):
+            missing_fields.append(field)
+
+    if missing_fields:
+        logger.warning(f"⚠️ Profile incomplete - missing fields: {missing_fields}")
+        state["profile_complete"] = False
+        state["missing_profile_fields"] = missing_fields
+    else:
+        logger.info("✅ Profile is complete")
+        state["profile_complete"] = True
+
+    return state
+
+
+async def check_profile_status(state: BookingState) -> str:
+    """Route based on profile completeness."""
+    if state.get("profile_complete"):
+        return "profile_complete"
+    else:
+        return "profile_incomplete"
+
+
+async def send_profile_incomplete_node(state: BookingState) -> BookingState:
+    """Send message when customer profile is incomplete."""
+    def incomplete_message(s):
+        missing_fields = s.get("missing_profile_fields", [])
+        profile_error = s.get("profile_error")
+
+        if profile_error:
+            return (
+                f"⚠️ {profile_error}\n\n"
+                f"Please complete your profile at https://yawlit.duckdns.org/customer/profile to book a service."
+            )
+
+        if missing_fields:
+            fields_str = ", ".join(missing_fields)
+            return (
+                f"⚠️ Your profile is incomplete. Please add the following details:\n\n"
+                f"{fields_str}\n\n"
+                f"Complete your profile at: https://yawlit.duckdns.org/customer/profile"
+            )
+
+        return (
+            "⚠️ Your profile is incomplete.\n\n"
+            "Please complete your profile at https://yawlit.duckdns.org/customer/profile to book a service."
+        )
+
+    return await send_message_node(state, incomplete_message)
+
+
+# ============================================================================
 # VEHICLE FETCHING & SELECTION
 # ============================================================================
 
@@ -206,17 +511,6 @@ async def fetch_vehicles_node(state: BookingState) -> BookingState:
     # Log the raw response structure for debugging
     logger.info(f"🔍 Raw vehicles_response keys: {list(vehicles_response.keys())}")
     logger.info(f"🔍 Full vehicles_response: {vehicles_response}")
-
-    # Check for Frappe error responses
-    if isinstance(vehicles_response.get("message"), dict):
-        if vehicles_response["message"].get("success") is False:
-            error_msg = vehicles_response["message"].get("message", "Unknown error")
-            logger.error(f"❌ Frappe API error: {error_msg}")
-            state["vehicle"] = None
-            state["vehicle_options"] = []
-            state["vehicle_selected"] = False
-            state["frappe_error"] = error_msg
-            return state
 
     # Try multiple possible response structures
     vehicles = vehicles_response.get("message", {}).get("vehicles", [])
@@ -269,10 +563,6 @@ async def fetch_vehicles_node(state: BookingState) -> BookingState:
 
 async def check_vehicle_selected(state: BookingState) -> str:
     """Route based on whether vehicle is selected."""
-    # Check for Frappe API errors first
-    if state.get("frappe_error"):
-        return "frappe_error"
-
     if state.get("vehicle_selected"):
         return "vehicle_selected"
     elif not state.get("vehicle_options"):
@@ -295,19 +585,6 @@ async def send_no_vehicles_node(state: BookingState) -> BookingState:
         )
 
     return await send_message_node(state, no_vehicles_message)
-
-
-async def send_frappe_error_node(state: BookingState) -> BookingState:
-    """Send message when Frappe API returns an error."""
-    def frappe_error_message(s):
-        error = s.get("frappe_error", "Unknown error occurred")
-        return (
-            f"⚠️ Unable to fetch your profile information:\n\n"
-            f"{error}\n\n"
-            f"Please complete your profile at https://yawlit.duckdns.org/customer/profile"
-        )
-
-    return await send_message_node(state, frappe_error_message)
 
 
 async def extract_vehicle_selection_node(state: BookingState) -> BookingState:
@@ -740,13 +1017,20 @@ def create_existing_user_booking_workflow():
 
     # Add all nodes
     workflow.add_node("entry_router", entry_router_node)
-    workflow.add_node("lookup_customer", lookup_customer_node)
-    workflow.add_node("fetch_vehicles", fetch_vehicles_node)
+
+    # NEW: Single node for profile + vehicles fetch
+    workflow.add_node("fetch_complete_profile", fetch_complete_profile_node)
+
+    # OLD NODES (kept for backward compatibility during transition)
+    # workflow.add_node("lookup_customer", lookup_customer_node)
+    # workflow.add_node("check_profile_complete", check_profile_complete_node)
+    # workflow.add_node("fetch_vehicles", fetch_vehicles_node)
+
+    workflow.add_node("send_profile_incomplete", send_profile_incomplete_node)
     workflow.add_node("send_vehicle_options", send_vehicle_options_node)
     workflow.add_node("extract_vehicle_selection", extract_vehicle_selection_node)
     workflow.add_node("send_vehicle_error", send_vehicle_selection_error_node)
     workflow.add_node("send_no_vehicles", send_no_vehicles_node)
-    workflow.add_node("send_frappe_error", send_frappe_error_node)
     workflow.add_node("send_greeting", send_greeting_node)
     workflow.add_node("send_please_register", send_please_register_node)
     workflow.add_node("fetch_services", fetch_services_node)
@@ -775,7 +1059,7 @@ def create_existing_user_booking_workflow():
         "entry_router",
         check_resume_point,
         {
-            "fresh_start": "lookup_customer",
+            "fresh_start": "fetch_complete_profile",  # NEW: Single unified fetch
             "awaiting_vehicle": "extract_vehicle_selection",
             "awaiting_service": "extract_service_selection",
             "awaiting_slot": "extract_slot_selection",
@@ -783,30 +1067,24 @@ def create_existing_user_booking_workflow():
         }
     )
 
-    # Customer lookup routing
+    # NEW: Unified profile fetch routing (replaces lookup -> profile -> vehicles chain)
     workflow.add_conditional_edges(
-        "lookup_customer",
-        check_customer_exists,
+        "fetch_complete_profile",
+        route_after_profile_fetch,
         {
-            "existing_customer": "fetch_vehicles",  # Go to vehicle fetching first
-            "new_customer": "send_please_register"
-        }
-    )
-
-    # Vehicle selection flow
-    workflow.add_conditional_edges(
-        "fetch_vehicles",
-        check_vehicle_selected,
-        {
-            "vehicle_selected": "send_greeting",
-            "vehicle_selection_required": "send_vehicle_options",
+            "customer_not_found": "send_please_register",
+            "profile_incomplete": "send_profile_incomplete",
             "no_vehicles": "send_no_vehicles",
-            "frappe_error": "send_frappe_error"
+            "vehicle_selection_required": "send_vehicle_options",
+            "profile_ready": "send_greeting"  # Everything ready, continue to services
         }
     )
+    workflow.add_edge("send_profile_incomplete", END)  # Wait for user to complete profile
+
+    # Vehicle selection flow (used when multiple vehicles)
+    # No changes needed here - already handles vehicle selection extraction
     workflow.add_edge("send_vehicle_options", END)  # Wait for user to select
     workflow.add_edge("send_no_vehicles", END)  # User needs to add vehicle first
-    workflow.add_edge("send_frappe_error", END)  # User needs to fix profile
 
     # Vehicle selection extraction (called on next message when user selects)
     workflow.add_conditional_edges(

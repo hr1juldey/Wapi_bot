@@ -1,6 +1,10 @@
 """Booking creation client for Frappe API.
 
 Handles one-time booking creation and price calculation.
+
+SECURITY: All requests automatically include API key authentication via
+Authorization header (configured in .env.txt: FRAPPE_API_KEY, FRAPPE_API_SECRET).
+Phone-based methods are secured at the Frappe backend level.
 """
 
 from typing import Dict, Any
@@ -58,6 +62,83 @@ class BookingCreateClient:
             )
         except (NotFoundError, FrappeAPIError) as e:
             logger.error(f"Error creating booking: {e}")
+            raise
+
+    async def create_booking_by_phone(
+        self,
+        phone_number: str,
+        booking_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create booking by phone number (no session required).
+
+        This method is designed for WhatsApp bot integration where
+        session-based authentication is not available. The Frappe backend
+        will lookup the customer by phone and create the booking.
+
+        SECURITY: This request includes API key authentication. The Frappe
+        backend validates the API key and should implement rate limiting
+        and phone number validation to prevent abuse.
+
+        Args:
+            phone_number: Customer phone number (10 digits, no country code)
+                         Example: "6290818033" (not "+916290818033")
+            booking_data: Booking information including:
+                - product_id: Service product ID
+                - booking_date: Date for booking (YYYY-MM-DD)
+                - slot_id: Time slot ID
+                - vehicle_id: Vehicle ID (from get_profile_by_phone vehicles list)
+                - address_id: Address ID (from get_profile_by_phone addresses list)
+                - electricity_provided: 1 or 0
+                - water_provided: 1 or 0
+                - addon_ids: List of addon IDs (optional, default: [])
+                - payment_mode: "Pay Now" or "Pay Later" (optional)
+
+        Returns:
+            Created booking details:
+            {
+                "success": True,
+                "booking_id": "BKG-2025-001",
+                "total_amount": 1500.0,
+                "message": "Booking created successfully"
+            }
+
+        Raises:
+            NotFoundError: Customer not found or invalid vehicle/address ID
+            FrappeAPIError: API error (e.g., slot unavailable)
+
+        Example:
+            >>> # First get profile to get vehicle_id and address_id
+            >>> profile = await client.customer_profile.get_profile_by_phone("6290818033")
+            >>> vehicle_id = profile["message"]["profile"]["vehicles"][0]["name"]
+            >>> address_id = profile["message"]["profile"]["addresses"][0]["name"]
+            >>>
+            >>> # Then create booking
+            >>> result = await client.booking_create.create_booking_by_phone(
+            ...     phone_number="6290818033",
+            ...     booking_data={
+            ...         "product_id": "service-123",
+            ...         "booking_date": "2025-01-15",
+            ...         "slot_id": "slot-456",
+            ...         "vehicle_id": vehicle_id,
+            ...         "address_id": address_id,
+            ...         "electricity_provided": 1,
+            ...         "water_provided": 1,
+            ...         "addon_ids": [],
+            ...         "payment_mode": "Pay Now"
+            ...     }
+            ... )
+            >>> print(result["message"]["booking_id"])
+        """
+        try:
+            # Add phone number to booking data
+            data = {**booking_data, "phone_number": phone_number}
+
+            return await self.http.post(
+                "/api/method/yawlit_automotive_services.api.booking.create_booking_by_phone",
+                data
+            )
+        except (NotFoundError, FrappeAPIError) as e:
+            logger.error(f"Error creating booking by phone {phone_number}: {e}")
             raise
 
     async def calculate_price(self, price_data: Dict[str, Any]) -> Dict[str, Any]:
