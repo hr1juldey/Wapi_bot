@@ -39,6 +39,9 @@ class BookingState(TypedDict):
     should_confirm: bool  # Show confirmation screen
     should_proceed: bool  # Continue conversation
 
+    # API Responses (intermediate results from call_frappe nodes)
+    customer_lookup_response: Optional[Dict[str, Any]]  # {exists: bool, data: {...}}
+
     # Booking Result
     service_request_id: Optional[str]  # Created when booking confirmed
     service_request: Optional[Dict[str, Any]]  # Full service request details

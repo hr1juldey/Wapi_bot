@@ -45,6 +45,9 @@ def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
     Example:
         >>> set_nested_field(state, "customer.first_name", "Hrijul")
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     parts = field_path.split(".")
     current = state
 
@@ -56,6 +59,10 @@ def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
 
     # Set final field
     current[parts[-1]] = value
+
+    # DEBUG: Verify the value was actually set
+    logger.debug(f"SET_NESTED_FIELD: {field_path} = {str(value)[:100]}...")
+    logger.debug(f"SET_NESTED_FIELD: Verification - state['{field_path}'] = {str(state.get(field_path))[:100]}...")
 
 
 def field_exists(state: BookingState, field_path: str) -> bool:

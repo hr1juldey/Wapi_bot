@@ -78,24 +78,18 @@ async def lookup_customer_node(state: BookingState) -> BookingState:
         f"📞 Customer lookup: {raw_phone} → {normalized_phone}"
     )
 
-    return await call_frappe_node(
+    # Call Frappe to lookup customer
+    state = await call_frappe_node(
         state,
         client.customer_lookup.check_customer_exists,
         "customer_lookup_response",
         state_extractor=lambda s: {"identifier": normalized_phone}
     )
 
-
-async def check_customer_exists(state: BookingState) -> str:
-    """Route based on customer existence."""
-    import logging
-
-    logger = logging.getLogger(__name__)
+    # Populate customer data from lookup response (for use by downstream nodes)
+    # NOTE: Must do this here, NOT in routing function (routing functions can't modify state)
     lookup_response = state.get("customer_lookup_response", {})
-
-    # YawlitClient returns {"exists": bool, "data": {...}}
     if lookup_response.get("exists"):
-        # Customer found - extract data
         data = lookup_response.get("data", {})
         state["customer"] = {
             "customer_uuid": data.get("customer_uuid"),
@@ -104,12 +98,30 @@ async def check_customer_exists(state: BookingState) -> str:
             "enabled": data.get("enabled")
         }
         logger.info(
-            f"✅ Customer found: {data.get('first_name')} "
+            f"✅ Customer data populated: {data.get('first_name')} "
             f"{data.get('last_name')} ({data.get('customer_uuid')})"
         )
+
+    return state
+
+
+async def check_customer_exists(state: BookingState) -> str:
+    """Route based on customer existence.
+
+    NOTE: This is a ROUTING function - do NOT modify state here.
+    State modifications must happen in node functions (like lookup_customer_node).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Check if customer data was populated by lookup_customer_node
+    customer = state.get("customer")
+    if customer and customer.get("customer_uuid"):
+        logger.info(f"🔀 Routing: existing_customer ({customer.get('first_name')})")
         return "existing_customer"
     else:
-        logger.info("❌ Customer not found - routing to registration")
+        logger.info("🔀 Routing: new_customer")
         return "new_customer"
 
 
