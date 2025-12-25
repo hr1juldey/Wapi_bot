@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     wapi_bearer_token: str = ""  # Bearer token for WAPI API authentication
     wapi_from_phone_number_id: str = ""  # Optional: Default phone number ID
     wapi_webhook_secret: str = ""  # HMAC secret for webhook signature validation
+    wapi_webhook_url: str = ""  # Current ngrok webhook URL (update when ngrok restarts)
 
     @field_validator(
         'frappe_api_key',

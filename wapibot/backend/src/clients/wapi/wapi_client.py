@@ -4,14 +4,15 @@ Provides async methods to send text and media messages via WAPI.in.net
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import httpx
 
 from core.config import settings
 from clients.wapi.schemas import (
     SendMessageRequest,
     SendMediaRequest,
-    WAPIResponse
+    WAPIResponse,
+    ContactCreate
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ class WAPIClient:
                 "Set WAPI_VENDOR_UID and WAPI_BEARER_TOKEN in .env.txt"
             )
 
+        # Ensure base_url has trailing slash for proper path joining
+        if not self.base_url.endswith('/'):
+            self.base_url = self.base_url + '/'
+
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=30.0,
@@ -75,16 +80,22 @@ class WAPIClient:
             path: Endpoint path (e.g., "contact/send-message")
 
         Returns:
-            Full endpoint path
+            Relative endpoint path (no leading slash for httpx base_url)
+
+        Example:
+            base_url = "https://wapi.in.net/api/"
+            path = "contact/send-message"
+            result = "{vendor_uid}/contact/send-message"
+            final_url = "https://wapi.in.net/api/{vendor_uid}/contact/send-message"
         """
-        return f"/{self.vendor_uid}/{path}"
+        return f"{self.vendor_uid}/{path}"
 
     async def send_message(
         self,
         phone_number: str,
         message_body: str,
         from_phone_number_id: Optional[str] = None,
-        contact: Optional[Dict[str, Any]] = None
+        contact: Optional[Union[ContactCreate, Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Send text message via WAPI.
 
@@ -107,7 +118,7 @@ class WAPIClient:
             ...     message_body="Hello from WapiBot!"
             ... )
         """
-        payload = {
+        payload: Dict[str, Any] = {
             "phone_number": phone_number,
             "message_body": message_body
         }
@@ -118,7 +129,9 @@ class WAPIClient:
 
         # Add optional contact auto-creation
         if contact:
-            payload["contact"] = contact
+            # Convert Pydantic model to dict if needed
+            contact_dict = contact.model_dump() if isinstance(contact, ContactCreate) else contact
+            payload["contact"] = contact_dict
 
         endpoint = self._get_endpoint("contact/send-message")
 
@@ -144,7 +157,7 @@ class WAPIClient:
         caption: Optional[str] = None,
         file_name: Optional[str] = None,
         from_phone_number_id: Optional[str] = None,
-        contact: Optional[Dict[str, Any]] = None
+        contact: Optional[Union[ContactCreate, Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Send media message (image, video, document) via WAPI.
 
@@ -171,7 +184,7 @@ class WAPIClient:
             ...     caption="Your booking confirmation"
             ... )
         """
-        payload = {
+        payload: Dict[str, Any] = {
             "phone_number": phone_number,
             "media_type": media_type,
             "media_url": media_url
@@ -188,7 +201,9 @@ class WAPIClient:
             payload["file_name"] = file_name
 
         if contact:
-            payload["contact"] = contact
+            # Convert Pydantic model to dict if needed
+            contact_dict = contact.model_dump() if isinstance(contact, ContactCreate) else contact
+            payload["contact"] = contact_dict
 
         endpoint = self._get_endpoint("contact/send-media-message")
 
