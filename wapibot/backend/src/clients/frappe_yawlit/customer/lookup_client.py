@@ -89,6 +89,9 @@ class CustomerLookupClient:
     async def _check_by_phone(self, phone: str) -> Dict[str, Any]:
         """Check customer existence by phone number.
 
+        Queries CustomerProfile.phone_number directly - this is where
+        all customer data lives (name, UUID, etc).
+
         Args:
             phone: Customer phone number
 
@@ -99,19 +102,34 @@ class CustomerLookupClient:
             result = await self.http.post(
                 "/api/method/frappe.client.get_value",
                 {
-                    "doctype": "User",
-                    "filters": {"mobile_no": phone},
+                    "doctype": "CustomerProfile",
+                    "filters": {"phone_number": phone},
                     "fieldname": [
-                        "name",
                         "customer_uuid",
-                        "enabled",
-                        "first_name",
-                        "last_name"
+                        "customer_name",
+                        "user",
+                        "customer_status"
                     ]
                 }
             )
             if result.get("message"):
-                return {"exists": True, "data": result["message"]}
+                cp_data = result["message"]
+                # Split customer_name into first/last
+                name_parts = (cp_data.get("customer_name") or "").split(" ", 1)
+                first_name = name_parts[0] if name_parts else ""
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+                logger.info(f"Customer found: {first_name} {last_name}")
+                return {
+                    "exists": True,
+                    "data": {
+                        "customer_uuid": cp_data.get("customer_uuid"),
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "enabled": cp_data.get("customer_status") == "Active",
+                        "name": cp_data.get("user")
+                    }
+                }
             return {"exists": False}
 
         except NotFoundError:
