@@ -8,13 +8,45 @@ from typing import Optional
 
 from core.config import settings
 from schemas.wapi import WAPIWebhookPayload, WAPIResponse
-from schemas.chat import ChatRequest
 from workflows.shared.state import BookingState
-from workflows.v2_full_workflow import v2_full_workflow
-from clients.wapi import get_wapi_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/wapi", tags=["WAPI"])
+
+
+def get_active_workflow():
+    """Dynamically load the active workflow based on settings.
+
+    This allows hot-swapping workflows by just changing ACTIVE_WORKFLOW in .env.txt
+    and restarting the server - no code changes needed!
+
+    Returns:
+        Compiled LangGraph workflow
+
+    Raises:
+        ValueError: If workflow name is not recognized
+    """
+    workflow_name = settings.active_workflow
+
+    logger.info(f"Loading workflow: {workflow_name}")
+
+    if workflow_name == "existing_user_booking":
+        from workflows.existing_user_booking import create_existing_user_booking_workflow
+        return create_existing_user_booking_workflow()
+
+    elif workflow_name == "marketing_to_registration":
+        from workflows.marketing_to_registration import create_marketing_to_registration_workflow
+        return create_marketing_to_registration_workflow()
+
+    elif workflow_name == "v2_full_workflow":
+        from workflows.v2_full_workflow import v2_full_workflow
+        return v2_full_workflow
+
+    else:
+        raise ValueError(
+            f"Unknown workflow: {workflow_name}. "
+            f"Valid options: existing_user_booking, marketing_to_registration, v2_full_workflow"
+        )
 
 
 def verify_webhook_signature(payload_body: bytes, signature: str) -> bool:
@@ -131,42 +163,21 @@ async def wapi_webhook(
             "service_request": None
         }
 
-        # Run V2 full workflow
-        logger.info(f"Processing message through workflow: {phone}")
-        result = await v2_full_workflow.ainvoke(state)
+        # Run active workflow (configured in .env.txt)
+        logger.info(f"Processing message through {settings.active_workflow} workflow: {phone}")
+        workflow = get_active_workflow()
+        result = await workflow.ainvoke(state)
 
-        # Extract response message
+        # Check if workflow already sent messages (via send_message_node)
+        # send_message_node sends directly via WAPI, so no need to send again
         response_message = result.get("response", "")
 
-        if not response_message:
+        if response_message:
+            logger.info(f"Workflow sent response to {phone}: {response_message[:50]}...")
+            logger.info("✅ Message already sent by workflow (via send_message_node)")
+        else:
             logger.warning(f"Workflow produced no response for {phone}")
-            response_message = "I'm processing your request. Please wait a moment."
-
-        # Send response via WAPI
-        wapi_client = get_wapi_client()
-
-        try:
-            # Build contact data for auto-creation
-            contact_data = {
-                "first_name": payload.contact.first_name or "Customer",
-                "last_name": payload.contact.last_name or "",
-                "email": payload.contact.email or "",
-                "country": payload.contact.country or "india",
-                "language_code": payload.contact.language_code or "en"
-            }
-
-            await wapi_client.send_message(
-                phone_number=phone,
-                message_body=response_message,
-                contact=contact_data
-            )
-
-            logger.info(f"Response sent to {phone}: {response_message[:50]}...")
-
-        except Exception as e:
-            logger.error(f"Failed to send WAPI response to {phone}: {e}", exc_info=True)
-            # Don't fail the webhook - message was processed
-            # WAPI will retry if needed
+            logger.info("No message sent - workflow may have ended without response")
 
         # Acknowledge receipt
         return WAPIResponse(

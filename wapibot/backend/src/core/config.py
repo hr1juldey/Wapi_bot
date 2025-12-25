@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     enable_sentiment_analysis: bool = True
     enable_intent_classification: bool = True
 
+    # LangGraph Configuration
+    langgraph_checkpoint_enabled: bool = True
+    langgraph_checkpoint_path: str = "./checkpoints.db"
+
+    # Workflow Selection (hot-swappable - no code changes!)
+    active_workflow: str = "existing_user_booking"
+
     # Frappe Backend Configuration
     frappe_base_url: str = "https://yawlit.duckdns.org"
     frappe_api_key: str = ""

@@ -1,7 +1,7 @@
 """WAPI webhook schemas with examples."""
 
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Dict, Any, Union, List
 
 
 class WAPIContact(BaseModel):
@@ -39,7 +39,15 @@ class WAPIMessage(BaseModel):
         examples=["I want to book a car wash"]
     )
     status: Optional[str] = Field(None)
-    media: Optional[WAPIMedia] = None
+    media: Optional[Union[WAPIMedia, List]] = None
+
+    @field_validator('media', mode='before')
+    @classmethod
+    def handle_empty_media(cls, v):
+        """Convert empty array to None for media field."""
+        if v == [] or v == []:
+            return None
+        return v
 
 
 class WAPIWebhookPayload(BaseModel):

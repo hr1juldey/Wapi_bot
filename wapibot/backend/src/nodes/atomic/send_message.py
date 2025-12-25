@@ -103,10 +103,13 @@ async def node(
     # Create WAPI request builder (wraps WAPI endpoint)
     wapi_client = get_wapi_client()
 
-    def wapi_send_request_builder(s: BookingState) -> Dict[str, Any]:
+    def wapi_send_request_builder(state: BookingState) -> Dict[str, Any]:  # noqa: ARG001
         """Build WAPI send-message request.
 
         This is a RequestBuilder that call_api.node understands.
+
+        Args:
+            state: BookingState (required by RequestBuilder protocol, not used here)
         """
         return {
             "method": "POST",
@@ -142,6 +145,9 @@ async def node(
                 "role": "assistant",
                 "content": message_text
             })
+
+            # Also set response field for webhook to use
+            state["response"] = message_text
 
             logger.info("✅ Message sent and stored in history")
 
