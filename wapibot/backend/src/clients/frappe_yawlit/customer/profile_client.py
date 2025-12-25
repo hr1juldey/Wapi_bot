@@ -24,7 +24,7 @@ class CustomerProfileClient:
         self.http = http_client
 
     async def get_profile(self) -> Dict[str, Any]:
-        """Get customer profile.
+        """Get customer profile (requires session).
 
         Returns:
             Customer profile data including personal details and preferences
@@ -39,6 +39,54 @@ class CustomerProfileClient:
             )
         except (NotFoundError, FrappeAPIError) as e:
             logger.error(f"Error fetching customer profile: {e}")
+            raise
+
+    async def get_profile_by_phone(self, phone_number: str) -> Dict[str, Any]:
+        """Get customer profile by phone number (no session required).
+
+        This method is designed for WhatsApp bot integration where
+        session-based authentication is not available. The Frappe backend
+        will lookup the customer by phone and return their profile without
+        requiring a session cookie.
+
+        Args:
+            phone_number: Customer phone number (10 digits, no country code)
+                         Example: "6290818033" (not "+916290818033")
+
+        Returns:
+            Customer profile data in Frappe response format:
+            {
+                "message": {
+                    "success": True,
+                    "profile": {
+                        "full_name": "John Doe",
+                        "email": "john@example.com",
+                        "mobile_no": "9876543210",
+                        "address": "123 Main St",
+                        "city": "Bangalore",
+                        "state": "Karnataka",
+                        "pincode": "560001",
+                        "vehicles": [...]
+                    }
+                }
+            }
+
+        Raises:
+            NotFoundError: Customer not found
+            FrappeAPIError: API error (e.g., incomplete profile)
+
+        Example:
+            >>> profile = await client.customer_profile.get_profile_by_phone("6290818033")
+            >>> full_name = profile["message"]["profile"]["full_name"]
+            >>> print(full_name)
+        """
+        try:
+            return await self.http.post(
+                "/api/method/yawlit_automotive_services.api.customer_portal.get_profile_by_phone",
+                {"phone_number": phone_number}
+            )
+        except (NotFoundError, FrappeAPIError) as e:
+            logger.error(f"Error fetching customer profile by phone {phone_number}: {e}")
             raise
 
     async def complete_profile(self, data: Dict[str, Any]) -> Dict[str, Any]:
