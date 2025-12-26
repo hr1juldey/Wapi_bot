@@ -70,12 +70,18 @@ async def show_service_catalog(state: BookingState) -> BookingState:
 
 async def process_service_selection(state: BookingState) -> BookingState:
     """Process service selection from user."""
-    return await handle_selection(
+    result = await handle_selection(
         state,
         selection_type="service",
         options_key="service_options",
         selected_key="service"
     )
+    # Clear current_step to indicate we're moving to the next step (slot selection)
+    # This allows slot_group to do a fresh fetch with the selected service
+    if result.get("service"):
+        result["current_step"] = ""
+        result["should_proceed"] = True  # Continue to next step
+    return result
 
 
 async def send_service_error(state: BookingState) -> BookingState:

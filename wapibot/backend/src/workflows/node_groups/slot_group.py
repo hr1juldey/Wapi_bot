@@ -35,6 +35,11 @@ async def fetch_slots(state: BookingState) -> BookingState:
     """
     client = get_yawlit_client()
 
+    # Debug: log all keys in state
+    logger.info(f"🔍 DEBUG fetch_slots - state keys: {list(state.keys())}")
+    logger.info(f"🔍 DEBUG fetch_slots - selected_service: {state.get('selected_service')}")
+    logger.info(f"🔍 DEBUG fetch_slots - service: {state.get('service')}")
+
     # Get service ID from selected service
     selected_service = state.get("selected_service") or state.get("service")
     service_id = selected_service.get("name") if selected_service else None
@@ -116,12 +121,17 @@ async def format_and_send_slots(state: BookingState) -> BookingState:
 
 async def process_slot_selection(state: BookingState) -> BookingState:
     """Process slot selection from user."""
-    return await handle_selection(
+    result = await handle_selection(
         state,
         selection_type="slot",
         options_key="slot_options",
         selected_key="slot"
     )
+    # Clear current_step to indicate we're moving to the next step (booking confirmation)
+    if result.get("slot"):
+        result["current_step"] = ""
+        result["should_proceed"] = True  # Continue to booking confirmation
+    return result
 
 
 async def send_slot_error(state: BookingState) -> BookingState:

@@ -36,12 +36,17 @@ async def show_vehicle_options(state: BookingState) -> BookingState:
 
 async def process_vehicle_selection(state: BookingState) -> BookingState:
     """Process vehicle selection from user."""
-    return await handle_selection(
+    result = await handle_selection(
         state,
         selection_type="vehicle",
         options_key="vehicle_options",
         selected_key="vehicle"
     )
+    # Clear current_step to indicate we're moving to the next step (service selection)
+    if result.get("vehicle"):
+        result["current_step"] = ""
+        result["should_proceed"] = True  # Continue to next step
+    return result
 
 
 async def send_vehicle_error(state: BookingState) -> BookingState:
