@@ -45,7 +45,7 @@ class PaymentTransaction(SQLModel, table=True):
     amount: Optional[float] = Field(default=None)
 
     # Flexible metadata (JSON)
-    metadata: Dict[str, Any] = Field(
+    event_metadata: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
         description="Event-specific metadata (reminder_number, admin_user, etc.)",
