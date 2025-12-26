@@ -73,6 +73,14 @@ class BookingState(TypedDict):
     formatted_slots: Optional[str]  # Human-readable slot options
     slot_selected: bool  # True if valid slot selected
 
+    # Slot Preference (Smart Selection)
+    preferred_date: Optional[str]  # Preferred date in YYYY-MM-DD format
+    preferred_time_range: Optional[str]  # "morning" | "afternoon" | "evening"
+    slot_preference_raw: Optional[str]  # Original user message for preference
+    slot_preference_extraction_method: Optional[str]  # "regex" | "dspy" | "menu"
+    grouped_slots: Optional[Dict[str, List[Dict[str, Any]]]]  # Slots grouped by time of day
+    filtered_slot_options: Optional[List[Dict[str, Any]]]  # Filtered slots by preference
+
     # Pricing & Confirmation
     total_price: Optional[float]  # Calculated total price
     confirmed: Optional[bool]  # True=confirmed, False=cancelled, None=unclear

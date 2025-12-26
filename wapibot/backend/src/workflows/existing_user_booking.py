@@ -1,11 +1,12 @@
 """Existing user booking workflow - Blender-style composition.
 
-This workflow is a COMPOSITION of 5 node groups:
+This workflow is a COMPOSITION of 6 node groups:
 1. Profile Group: Customer lookup + validation
 2. Vehicle Group: Vehicle selection (if needed)
 3. Service Group: Service catalog + selection
-4. Slot Group: Appointment slot selection
-5. Booking Group: Price calculation + confirmation + creation
+4. Slot Preference Group: Ask when to book (smart filtering)
+5. Slot Group: Appointment slot selection (filtered & grouped)
+6. Booking Group: Price calculation + confirmation + creation
 
 Each group is a mini-workflow (subgraph) that can be:
 - Tested independently
@@ -33,6 +34,7 @@ from core.checkpointer import checkpointer_manager
 from workflows.node_groups.profile_group import create_profile_group
 from workflows.node_groups.vehicle_group import create_vehicle_group
 from workflows.node_groups.service_group import create_service_group
+from workflows.node_groups.slot_preference_group import create_slot_preference_group
 from workflows.node_groups.slot_group import create_slot_group
 from workflows.node_groups.booking_group import create_booking_group
 
@@ -54,6 +56,9 @@ def route_entry(state: BookingState) -> str:
     elif current_step == "awaiting_booking_confirmation":
         logger.info("🔀 Resuming at booking_confirmation")
         return "booking_confirmation"
+    elif current_step in ["awaiting_preference", "awaiting_time_mcq", "awaiting_date_mcq"]:
+        logger.info("🔀 Resuming at slot_preference")
+        return "slot_preference"
     elif current_step == "awaiting_service_selection":
         logger.info("🔀 Resuming at service_selection")
         return "service_selection"
@@ -87,7 +92,7 @@ def create_existing_user_booking_workflow():
 
     Architecture:
     - Entry router enables resuming from correct step
-    - 5 composable node groups (like Blender's Geometry Nodes)
+    - 6 composable node groups (like Blender's Geometry Nodes)
     - Each group is self-contained mini-workflow
     - Main graph just chains groups together
 
@@ -103,6 +108,7 @@ def create_existing_user_booking_workflow():
     workflow.add_node("profile_check", create_profile_group())
     workflow.add_node("vehicle_selection", create_vehicle_group())
     workflow.add_node("service_selection", create_service_group())
+    workflow.add_node("slot_preference", create_slot_preference_group())
     workflow.add_node("slot_selection", create_slot_group())
     workflow.add_node("booking_confirmation", create_booking_group())
 
@@ -117,6 +123,7 @@ def create_existing_user_booking_workflow():
             "profile_check": "profile_check",
             "vehicle_selection": "vehicle_selection",
             "service_selection": "service_selection",
+            "slot_preference": "slot_preference",
             "slot_selection": "slot_selection",
             "booking_confirmation": "booking_confirmation"
         }
@@ -137,6 +144,12 @@ def create_existing_user_booking_workflow():
 
     workflow.add_conditional_edges(
         "service_selection",
+        should_continue,
+        {"continue": "slot_preference", "end": END}
+    )
+
+    workflow.add_conditional_edges(
+        "slot_preference",
         should_continue,
         {"continue": "slot_selection", "end": END}
     )

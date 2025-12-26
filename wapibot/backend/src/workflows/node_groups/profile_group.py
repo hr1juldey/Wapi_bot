@@ -42,7 +42,7 @@ async def send_vehicle_options(state: BookingState) -> BookingState:
 
 async def send_please_register(state: BookingState) -> BookingState:
     """Send registration prompt."""
-    message = lambda s: "Please register first: https://yawlit.in/register"
+    message = lambda s: "Please register first: https://yawlit.duckdns.org/customer/auth/register"
     result = await send_message_node(state, message)
     result["should_proceed"] = False  # Error state, stop workflow
     return result
@@ -50,7 +50,7 @@ async def send_please_register(state: BookingState) -> BookingState:
 
 async def send_profile_incomplete(state: BookingState) -> BookingState:
     """Send profile completion prompt."""
-    message = lambda s: "Please complete your profile at https://yawlit.in/profile"
+    message = lambda s: "Please complete your profile at https://yawlit.duckdns.org/customer/profile"
     result = await send_message_node(state, message)
     result["should_proceed"] = False  # Error state, stop workflow
     return result
@@ -58,7 +58,7 @@ async def send_profile_incomplete(state: BookingState) -> BookingState:
 
 async def send_no_vehicles(state: BookingState) -> BookingState:
     """Send vehicle addition prompt."""
-    message = lambda s: "Please add a vehicle at https://yawlit.in/vehicles"
+    message = lambda s: "Please add a vehicle at https://yawlit.duckdns.org/customer/profile"
     result = await send_message_node(state, message)
     result["should_proceed"] = False  # Error state, stop workflow
     return result

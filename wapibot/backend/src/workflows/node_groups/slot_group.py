@@ -2,17 +2,11 @@
 
 Handles:
 - Fetching available slots from Frappe API
-- Displaying slots to user
+- Filtering slots by user preferences (date/time range)
+- Grouping slots by time of day (morning/afternoon/evening)
+- Displaying grouped slots to user
 - Processing slot selection
 - Error handling
-
-Replaces 6 old nodes:
-- fetch_slots
-- format_slots
-- send_slots
-- await_slot_selection
-- process_slot_selection
-- handle_slot_selection_error
 """
 
 import logging
@@ -23,6 +17,9 @@ from nodes.selection.generic_handler import handle_selection, route_after_select
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.transform import node as transform_node
 from nodes.transformers.format_slot_options import FormatSlotOptions
+from nodes.transformers.filter_slots_by_preference import FilterSlotsByPreference
+from nodes.transformers.group_slots_by_time import GroupSlotsByTime
+from nodes.message_builders.grouped_slots import GroupedSlotsBuilder
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -93,20 +90,25 @@ async def fetch_slots(state: BookingState) -> BookingState:
 
 
 async def format_and_send_slots(state: BookingState) -> BookingState:
-    """Format and send slots to customer, then pause for user input."""
-    # Format slots
-    formatted = await transform_node(
+    """Filter, group, and send slots to customer, then pause for user input."""
+    # Step 1: Filter slots by preferences (if any)
+    filtered = await transform_node(
         state,
-        FormatSlotOptions(),
+        FilterSlotsByPreference(),
         "slot_options",
-        "formatted_slots_message"
+        "filtered_slot_options"
     )
 
-    # Send formatted message
-    def slots_message(s):
-        return s.get("formatted_slots_message", "No slots available")
+    # Step 2: Group slots by time of day (morning/afternoon/evening)
+    grouped = await transform_node(
+        filtered,
+        GroupSlotsByTime(),
+        "filtered_slot_options",
+        "grouped_slots"
+    )
 
-    result = await send_message_node(formatted, slots_message)
+    # Step 3: Send grouped slots message
+    result = await send_message_node(grouped, GroupedSlotsBuilder())
 
     # Pause and wait for user's slot selection
     result["should_proceed"] = False
@@ -116,10 +118,11 @@ async def format_and_send_slots(state: BookingState) -> BookingState:
 
 async def process_slot_selection(state: BookingState) -> BookingState:
     """Process slot selection from user."""
+    # Use filtered_slot_options since that's what we showed to the user
     result = await handle_selection(
         state,
         selection_type="slot",
-        options_key="slot_options",
+        options_key="filtered_slot_options",
         selected_key="slot"
     )
     # Clear current_step to indicate we're moving to the next step (booking confirmation)

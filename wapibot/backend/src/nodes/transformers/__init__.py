@@ -10,8 +10,12 @@ They are used with transform.node():
 
 from nodes.transformers.filter_services import FilterServicesByVehicle
 from nodes.transformers.format_slot_options import FormatSlotOptions
+from nodes.transformers.filter_slots_by_preference import FilterSlotsByPreference
+from nodes.transformers.group_slots_by_time import GroupSlotsByTime
 
 __all__ = [
     "FilterServicesByVehicle",
     "FormatSlotOptions",
+    "FilterSlotsByPreference",
+    "GroupSlotsByTime",
 ]

@@ -13,6 +13,13 @@ from models.response import ChatbotResponse, ExtractionResult
 from models.payment_session import PaymentSession, PaymentStatus
 from models.payment_transaction import PaymentTransaction, TransactionType
 from models.payment_reminder import PaymentReminder, ReminderStatus
+from models.extraction_patterns import (
+    TimeRangePattern,
+    DatePattern,
+    TIME_RANGE_PATTERNS,
+    DATE_PATTERNS,
+    WEEKDAY_PATTERNS
+)
 
 __all__ = [
     # Core
@@ -45,4 +52,10 @@ __all__ = [
     "TransactionType",
     "PaymentReminder",
     "ReminderStatus",
+    # Extraction Patterns
+    "TimeRangePattern",
+    "DatePattern",
+    "TIME_RANGE_PATTERNS",
+    "DATE_PATTERNS",
+    "WEEKDAY_PATTERNS",
 ]
