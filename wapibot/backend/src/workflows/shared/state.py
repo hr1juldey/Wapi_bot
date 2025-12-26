@@ -81,6 +81,16 @@ class BookingState(TypedDict):
     service_request_id: Optional[str]  # Created when booking confirmed
     service_request: Optional[Dict[str, Any]]  # Full service request details
 
+    # Payment Fields
+    payment_session_id: Optional[str]  # UUID of PaymentSession
+    payment_qr_path: Optional[str]  # Path to QR code PNG file
+    payment_amount: Optional[float]  # Amount user needs to pay
+    payment_confirmed: bool  # True if admin confirmed payment
+    payment_status: Optional[str]  # PENDING, CONFIRMED, EXPIRED, CANCELLED
+    payment_confirmed_at: Optional[str]  # ISO timestamp of confirmation
+    payment_confirmed_by: Optional[str]  # Admin email who confirmed
+    payment_reminders_scheduled: Optional[int]  # Number of reminders scheduled
+
 
 # Type alias for cleaner imports
 State = BookingState

@@ -21,6 +21,7 @@ from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.call_frappe import node as call_frappe_node
 from nodes.message_builders.booking_confirmation import BookingConfirmationBuilder
+from nodes.payments import generate_qr_node, schedule_reminders_node
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -100,8 +101,41 @@ async def create_booking(state: BookingState) -> BookingState:
     )
 
 
+async def generate_payment_qr(state: BookingState) -> BookingState:
+    """Generate UPI QR code for payment."""
+    amount = state.get("total_price")
+    booking_id = state.get("booking_response", {}).get("booking_id", "Unknown")
+
+    return await generate_qr_node(
+        state,
+        amount=amount,
+        transaction_note=f"Yawlit Booking {booking_id}",
+    )
+
+
+async def schedule_payment_reminders(state: BookingState) -> BookingState:
+    """Schedule payment reminders (non-blocking)."""
+    return await schedule_reminders_node(state, on_failure="log")
+
+
+async def send_qr_message(state: BookingState) -> BookingState:
+    """Send QR code payment message to user."""
+
+    def qr_message(s):
+        amount = s.get("payment_amount", 0)
+        return (
+            f"💳 *Payment Required*\n\n"
+            f"Amount: ₹{amount:.2f}\n\n"
+            f"Please scan the QR code below and complete the payment.\n\n"
+            f"We'll send you payment reminders over the next 7 days."
+        )
+
+    return await send_message_node(state, qr_message)
+
+
 async def send_success(state: BookingState) -> BookingState:
     """Send booking success message."""
+
     def success_message(s):
         booking_response = s.get("booking_response", {})
         message = booking_response.get("message", {})
@@ -153,6 +187,9 @@ def create_booking_group() -> StateGraph:
     workflow.add_node("send_confirmation", send_confirmation)
     workflow.add_node("extract_confirmation", extract_confirmation)
     workflow.add_node("create_booking", create_booking)
+    workflow.add_node("generate_payment_qr", generate_payment_qr)
+    workflow.add_node("schedule_payment_reminders", schedule_payment_reminders)
+    workflow.add_node("send_qr_message", send_qr_message)
     workflow.add_node("send_success", send_success)
     workflow.add_node("send_cancelled", send_cancelled)
     workflow.add_node("send_unclear", send_unclear)
@@ -184,7 +221,12 @@ def create_booking_group() -> StateGraph:
         }
     )
 
-    workflow.add_edge("create_booking", "send_success")
+    # Payment flow (after booking created)
+    workflow.add_edge("create_booking", "generate_payment_qr")
+    workflow.add_edge("generate_payment_qr", "schedule_payment_reminders")
+    workflow.add_edge("schedule_payment_reminders", "send_qr_message")
+    workflow.add_edge("send_qr_message", "send_success")
+
     workflow.add_edge("send_success", END)
     workflow.add_edge("send_cancelled", END)
     workflow.add_edge("send_unclear", END)
