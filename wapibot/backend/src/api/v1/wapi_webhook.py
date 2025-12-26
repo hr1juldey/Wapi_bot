@@ -142,31 +142,68 @@ async def wapi_webhook(
             logger.debug(f"Skipping empty message: {message_id}")
             return WAPIResponse(status="skipped", message_id=message_id)
 
-        # Create initial state for workflow
-        state: BookingState = {
-            "conversation_id": phone,
-            "user_message": body,
-            "history": [],  # TODO: Load from database
-            "customer": None,
-            "vehicle": None,
-            "appointment": None,
-            "sentiment": None,
-            "intent": None,
-            "intent_confidence": 0.0,
-            "current_step": "extract_name",
-            "completeness": 0.0,
-            "errors": [],
-            "response": "",
-            "should_confirm": False,
-            "should_proceed": True,
-            "service_request_id": None,
-            "service_request": None
-        }
-
-        # Run active workflow (configured in .env.txt)
+        # Get workflow and config for state persistence
         logger.info(f"Processing message through {settings.active_workflow} workflow: {phone}")
         workflow = get_active_workflow()
-        result = await workflow.ainvoke(state)
+        config = {"configurable": {"thread_id": phone}}
+
+        # Try to load existing state from checkpointer
+        last_state = None
+        try:
+            state_snapshot = await workflow.aget_state(config)
+            if state_snapshot and state_snapshot.values:
+                last_state = state_snapshot.values
+                logger.info(f"Loaded existing state for {phone}")
+        except Exception as e:
+            logger.debug(f"No existing state for {phone}: {e}")
+
+        # Create or update state
+        if last_state:
+            # Resume conversation - update user_message
+            state: BookingState = dict(last_state)
+            state["user_message"] = body
+            logger.info(f"Resuming conversation for {phone}")
+        else:
+            # New conversation - initialize state
+            state: BookingState = {
+                "conversation_id": phone,
+                "user_message": body,
+                "history": [],
+                "customer": None,
+                "vehicle": None,
+                "vehicle_options": None,
+                "vehicle_selected": False,
+                "vehicles_response": None,
+                "appointment": None,
+                "sentiment": None,
+                "intent": None,
+                "intent_confidence": 0.0,
+                "current_step": "entry_router",
+                "completeness": 0.0,
+                "errors": [],
+                "response": "",
+                "should_confirm": False,
+                "should_proceed": True,
+                "service_request_id": None,
+                "service_request": None,
+                "customer_lookup_response": None,
+                "services_response": None,
+                "wapi_response": None,
+                "filtered_services": None,
+                "selected_service": None,
+                "service_selected": False,
+                "selection_error": None,
+                "available_slots": None,
+                "formatted_slots": None,
+                "slot_selected": False,
+                "total_price": None,
+                "confirmed": None,
+                "gate_decision": None,
+            }
+            logger.info(f"Starting new conversation for {phone}")
+
+        # Run workflow with config for checkpointing
+        result = await workflow.ainvoke(state, config=config)
 
         # Check if workflow already sent messages (via send_message_node)
         # send_message_node sends directly via WAPI, so no need to send again

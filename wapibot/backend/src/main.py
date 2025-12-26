@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.dspy_config import dspy_configurator
 from core.warmup import warmup_service
+from core.checkpointer import checkpointer_manager
 from db.connection import db_connection
 from api.router_registry import register_all_routes
 
@@ -48,6 +49,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ DSPy configuration failed: {e}")
         raise
 
+    # Initialize LangGraph checkpointers (in-memory + SQLite backup)
+    try:
+        await checkpointer_manager.initialize()
+        logger.info("✅ Checkpointers initialized")
+    except Exception as e:
+        logger.error(f"❌ Checkpointer initialization failed: {e}")
+        raise
+
     # Start LLM warmup (non-blocking)
     asyncio.create_task(warmup_service.startup_warmup())
 
@@ -58,6 +67,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🛑 Shutting down WapiBot Backend V2...")
+
+    # Cleanup checkpointers
+    await checkpointer_manager.shutdown()
 
 
 # Create FastAPI app

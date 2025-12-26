@@ -1,6 +1,10 @@
 """Customer profile client for Frappe API.
 
 Handles customer profile operations including profile management and vehicle management.
+
+SECURITY: All requests automatically include API key authentication via
+Authorization header (configured in .env.txt: FRAPPE_API_KEY, FRAPPE_API_SECRET).
+Phone-based methods are secured at the Frappe backend level.
 """
 
 from typing import Dict, Any
@@ -46,8 +50,11 @@ class CustomerProfileClient:
 
         This method is designed for WhatsApp bot integration where
         session-based authentication is not available. The Frappe backend
-        will lookup the customer by phone and return their profile without
-        requiring a session cookie.
+        will lookup the customer by phone and return their profile.
+
+        SECURITY: This request includes API key authentication. The Frappe
+        backend validates the API key and should implement rate limiting
+        and phone number validation to prevent abuse.
 
         Args:
             phone_number: Customer phone number (10 digits, no country code)
@@ -59,6 +66,7 @@ class CustomerProfileClient:
                 "message": {
                     "success": True,
                     "profile": {
+                        "customer_uuid": "LIT-CUST-...",
                         "full_name": "John Doe",
                         "email": "john@example.com",
                         "mobile_no": "9876543210",
@@ -66,7 +74,11 @@ class CustomerProfileClient:
                         "city": "Bangalore",
                         "state": "Karnataka",
                         "pincode": "560001",
-                        "vehicles": [...]
+                        "customer_tier": "Bronze",
+                        "vehicles": [...],
+                        "addresses": [...],
+                        "needs_email": False,
+                        "pending_email_verification": False
                     }
                 }
             }
@@ -77,8 +89,9 @@ class CustomerProfileClient:
 
         Example:
             >>> profile = await client.customer_profile.get_profile_by_phone("6290818033")
-            >>> full_name = profile["message"]["profile"]["full_name"]
-            >>> print(full_name)
+            >>> profile_data = profile["message"]["profile"]
+            >>> print(profile_data["full_name"])
+            >>> print(f"Vehicles: {len(profile_data['vehicles'])}")
         """
         try:
             return await self.http.post(

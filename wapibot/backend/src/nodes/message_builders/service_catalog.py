@@ -24,14 +24,14 @@ class ServiceCatalogBuilder:
         """Build service catalog message from state.
 
         Args:
-            state: Current booking state with filtered_services
+            state: Current booking state with service_options
 
         Returns:
             Formatted service catalog message
 
         Example:
             state = {
-                "filtered_services": [
+                "service_options": [
                     {"product_name": "Premium Wash", "base_price": 499, "description": "..."},
                     {"product_name": "Basic Wash", "base_price": 299, "description": "..."}
                 ],
@@ -40,8 +40,8 @@ class ServiceCatalogBuilder:
             builder = ServiceCatalogBuilder()
             message = builder(state)
         """
-        # Get filtered services
-        services = state.get("filtered_services", [])
+        # Get service options (try both old and new keys for compatibility)
+        services = state.get("service_options", []) or state.get("filtered_services", [])
 
         if not services:
             return "Sorry, no services are available for your vehicle type at the moment."

@@ -7,7 +7,7 @@ Switch provider by changing PRIMARY_LLM_PROVIDER in .env.txt
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import Literal
+from typing import Literal, List
 
 # Find .env.txt at project root (wapibot/)
 # Path: backend/src/core/config.py -> ../../.. = backend -> ../.. = wapibot
@@ -113,6 +113,42 @@ class Settings(BaseSettings):
     wapi_from_phone_number_id: str = ""  # Optional: Default phone number ID
     wapi_webhook_secret: str = ""  # HMAC secret for webhook signature validation
     wapi_webhook_url: str = ""  # Current ngrok webhook URL (update when ngrok restarts)
+
+    # Public Base URL (for media serving to external APIs like WAPI)
+    public_base_url: str = "http://localhost:8000"  # Override with ngrok URL in .env
+
+    # UPI Payment Configuration
+    upi_id: str = ""  # Merchant UPI ID (format: user@bank)
+    payment_instant_reminder: bool = True  # Send instant reminder when QR generated
+    payment_reminder_intervals: List[int] = [24, 48, 72]  # Hours between reminders
+    payment_cutoff_hours: int = 168  # Payment expiry (7 days = 168 hours)
+
+    # Bank Transfer Details
+    bank_name: str = "State Bank of India"
+    bank_branch: str = "Kalikapur"
+    bank_ifsc: str = "SBIN0003907"
+    bank_account_no: str = ""
+    bank_account_name: str = "YAWLIT AUTOMOTIVES PVT. LTD."
+
+    # Business Contact
+    company_name: str = "Yawlit Automotives"
+    company_phone: str = ""
+    payment_help_text: str = "If you need any help making your payment, please contact us at your earliest convenience."
+
+    # Celery Configuration
+    celery_broker_url: str = "redis://localhost:6379/0"  # Redis broker for tasks
+    celery_result_backend: str = "redis://localhost:6379/1"  # Redis result backend
+
+    @field_validator(
+        'payment_reminder_intervals',
+        mode='before'
+    )
+    @classmethod
+    def parse_reminder_intervals(cls, v):
+        """Parse reminder intervals from comma-separated string or list."""
+        if isinstance(v, str):
+            return [int(x.strip()) for x in v.split(',')]
+        return v
 
     @field_validator(
         'frappe_api_key',

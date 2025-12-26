@@ -60,7 +60,7 @@ class SlotAvailabilityClient:
                 "/api/method/yawlit_automotive_services.api.booking.get_available_slots_enhanced",
                 {
                     "service_id": service_id,
-                    "date": date,
+                    "date_str": date,  # Frappe endpoint expects "date_str" parameter
                     "vehicle_type": vehicle_type
                 }
             )

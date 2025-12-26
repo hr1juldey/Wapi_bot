@@ -1,6 +1,10 @@
 """Booking creation client for Frappe API.
 
 Handles one-time booking creation and price calculation.
+
+SECURITY: All requests automatically include API key authentication via
+Authorization header (configured in .env.txt: FRAPPE_API_KEY, FRAPPE_API_SECRET).
+Phone-based methods are secured at the Frappe backend level.
 """
 
 from typing import Dict, Any
@@ -71,6 +75,10 @@ class BookingCreateClient:
         session-based authentication is not available. The Frappe backend
         will lookup the customer by phone and create the booking.
 
+        SECURITY: This request includes API key authentication. The Frappe
+        backend validates the API key and should implement rate limiting
+        and phone number validation to prevent abuse.
+
         Args:
             phone_number: Customer phone number (10 digits, no country code)
                          Example: "6290818033" (not "+916290818033")
@@ -124,7 +132,7 @@ class BookingCreateClient:
         try:
             # Add phone number to booking data
             data = {**booking_data, "phone_number": phone_number}
-            
+
             return await self.http.post(
                 "/api/method/yawlit_automotive_services.api.booking.create_booking_by_phone",
                 data
