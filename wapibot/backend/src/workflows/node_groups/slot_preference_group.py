@@ -17,6 +17,7 @@ from nodes.message_builders.date_preference_prompt import DatePreferencePromptBu
 from nodes.message_builders.time_preference_menu import TimePreferenceMenuBuilder
 from nodes.message_builders.date_preference_menu import DatePreferenceMenuBuilder
 from fallbacks.pattern_extractors import extract_time_range, extract_date
+from fallbacks.enhanced_date_fallback import extract_enhanced_date
 from models.extraction_patterns import TIME_RANGE_PATTERNS, DATE_PATTERNS
 
 logger = logging.getLogger(__name__)
@@ -49,15 +50,27 @@ async def ask_preference(state: BookingState) -> BookingState:
 
 
 async def extract_preference(state: BookingState) -> BookingState:
-    """Extract date/time preference - hybrid regex+DSPy (regex first for cost)."""
+    """Extract date/time preference - hybrid regex+enhanced+DSPy (regex first for cost)."""
     message = state.get("user_message", "")
 
-    # Try regex first (fast, free)
+    # Try time range extraction first
     time_result = extract_time_range(message, TIME_RANGE_PATTERNS)
+
+    # Try basic date patterns
     date_result = extract_date(message, DATE_PATTERNS)
 
+    # Try enhanced date extraction (ordinal, relative dates)
+    if not date_result:
+        enhanced_result = extract_enhanced_date(message)
+        if enhanced_result:
+            date_result = enhanced_result
+            # Check if confirmation needed
+            if enhanced_result.get("needs_confirmation"):
+                state["date_confirmation_prompt"] = enhanced_result.get("confirmation_prompt")
+                state["needs_date_confirmation"] = True
+
     if time_result or date_result:
-        logger.info("✅ Regex extraction successful")
+        logger.info("✅ Regex/Enhanced extraction successful")
         state["slot_preference_extraction_method"] = "regex"
         if time_result:
             state["preferred_time_range"] = time_result.get("preferred_time_range")

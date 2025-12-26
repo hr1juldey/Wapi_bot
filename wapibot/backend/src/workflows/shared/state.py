@@ -66,6 +66,12 @@ class BookingState(TypedDict):
     service_selected: bool  # True if valid service selected
     selection_error: Optional[str]  # Error message for invalid selection
 
+    # Addon Selection
+    available_addons: Optional[List[Dict[str, Any]]]  # Addons available for selected service
+    selected_addons: Optional[List[Dict[str, Any]]]  # User's selected addons
+    addon_selection_complete: bool  # True if user finished addon selection
+    skipped_addons: bool  # True if user explicitly skipped addons
+
     # Slot Selection
     available_slots: Optional[List[Dict[str, Any]]]  # Available appointment slots
     slot_options: Optional[List[Dict[str, Any]]]  # Slots available for selection

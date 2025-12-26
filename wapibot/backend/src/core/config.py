@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     enable_sentiment_analysis: bool = True
     enable_intent_classification: bool = True
 
+    # Business Policies
+    cancellation_free_hours: int = 24  # Free cancellation if booking >24h away
+    support_whatsapp_number: str = "+919876543210"  # Human escalation number
+
     # LangGraph Configuration
     langgraph_checkpoint_enabled: bool = True
     langgraph_checkpoint_path: str = "./checkpoints.db"
