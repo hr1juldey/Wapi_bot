@@ -23,25 +23,33 @@ class BookingConfirmationBuilder:
         """Build booking confirmation message from state.
 
         Args:
-            state: Current booking state with customer, vehicle, service, appointment
+            state: Current booking state with customer, vehicle, service, appointment/slot
 
         Returns:
             Formatted confirmation message
 
+        Note:
+            Automatically uses 'appointment' field if present, otherwise falls back to 'slot'.
+            This handles both manual appointments and slot-based bookings (DRY).
+
         Example:
             state = {
                 "customer": {"first_name": "Rahul"},
-                "vehicle": {"brand": "TATA", "model": "Nexon", "number_plate": "MH12AB1234"},
-                "selected_service": {"product_name": "Premium Wash", "base_price": 499},
-                "appointment": {"date": "2025-12-25", "time_slot": "10:00 AM - 12:00 PM"},
-                "total_price": 499
+                "vehicle": {"brand": "TATA", "model": "Nexon"},
+                "selected_service": {"product_name": "Premium Wash"},
+                "slot": {"date": "2025-12-29", "time_slot": "07:15 - 08:15"},
+                "total_price": 599
             }
         """
         # Get booking details
         customer = state.get("customer", {})
         vehicle = state.get("vehicle", {})
         service = state.get("selected_service", {})
-        appointment = state.get("appointment", {})
+
+        # Smart fallback: appointment (manual) OR slot (from selection)
+        # Handles both None and missing cases (DRY principle)
+        appointment = state.get("appointment") or state.get("slot", {})
+
         total_price = state.get("total_price", 0)
 
         # Build confirmation message

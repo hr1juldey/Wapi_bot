@@ -66,6 +66,12 @@ async def node(
         state["wapi_error"] = "No phone number in state"
         return state
 
+    # Ensure country code (WAPI requires full international format)
+    # Frappe returns "6290818033", WAPI needs "916290818033"
+    if not phone_number.startswith("91") and len(phone_number) == 10:
+        phone_number = f"91{phone_number}"
+        logger.info(f"📱 Added country code: 91{phone_number[-10:]}")
+
     logger.info(
         f"📸 Sending {media_type} to {phone_number}: {media_url[:50]}..."
     )
