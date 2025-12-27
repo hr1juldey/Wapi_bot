@@ -9,6 +9,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "black>=23.0.0",
     "celery>=5.4.0",
+    "cryptography>=46.0.3",
     "dspy-ai>=3.0.0",
     "email-validator>=2.3.0",
     "fastapi>=0.104.0",
