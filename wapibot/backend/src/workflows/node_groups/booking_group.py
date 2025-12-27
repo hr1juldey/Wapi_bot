@@ -139,17 +139,20 @@ async def create_booking(state: BookingState) -> BookingState:
 
         logger.info(f"📱 Phone normalized: {s.get('conversation_id')} → {phone}")
 
+        # Return phone_number and booking_data separately (method signature requirement)
         return {
             "phone_number": phone,
-            "product_id": selected_service.get("product_id"),
-            "booking_date": slot.get("date"),
-            "slot_id": slot.get("slot_id"),
-            "vehicle_id": s.get("vehicle", {}).get("vehicle_id"),
-            "address_id": s.get("selected_address_id") or customer.get("default_address_id"),
-            "electricity_provided": s.get("electricity_provided", 1),
-            "water_provided": s.get("water_provided", 1),
-            "addon_ids": s.get("addon_ids", []),
-            "payment_mode": "Pay Now"
+            "booking_data": {
+                "product_id": selected_service.get("product_id"),
+                "booking_date": slot.get("date"),
+                "slot_id": slot.get("slot_id"),
+                "vehicle_id": s.get("vehicle", {}).get("vehicle_id"),
+                "address_id": s.get("selected_address_id") or customer.get("default_address_id"),
+                "electricity_provided": s.get("electricity_provided", 1),
+                "water_provided": s.get("water_provided", 1),
+                "addon_ids": s.get("addon_ids", []),
+                "payment_mode": "Pay Now"
+            }
         }
 
     logger.info("📝 Creating booking via create_booking_by_phone...")
@@ -166,6 +169,8 @@ async def generate_payment_qr(state: BookingState) -> BookingState:
     amount = state.get("total_price")
     # Backward-compatible extraction (new API: direct field, old API: nested in message)
     booking_response = state.get("booking_response", {})
+    logger.info(f"🔍 DEBUG: booking_response keys = {list(booking_response.keys())}")
+    logger.info(f"🔍 DEBUG: booking_response = {booking_response}")
     booking_id = booking_response.get("booking_id") or booking_response.get("message", {}).get("booking_id", "Unknown")
 
     return await generate_qr_node(
