@@ -18,11 +18,16 @@ logger = logging.getLogger(__name__)
 class ShutdownManager:
     """Manages graceful shutdown of multiple services."""
 
-    def __init__(self):
-        """Initialize shutdown manager."""
+    def __init__(self, reload_mode: bool = False):
+        """Initialize shutdown manager.
+
+        Args:
+            reload_mode: If True, don't call sys.exit() to allow uvicorn hot reload
+        """
         self.celery_process: Optional[subprocess.Popen] = None
         self.ngrok_tunnel_url: Optional[str] = None
         self.cleanup_callbacks: list[Callable] = []
+        self.should_exit: bool = not reload_mode  # Don't exit in reload mode
 
     def register_celery(self, process: Optional[subprocess.Popen]):
         """Register Celery worker process for shutdown.
@@ -76,9 +81,18 @@ class ShutdownManager:
 
         logger.info("👋 All services stopped. Goodbye!")
 
-        # Exit after cleanup is complete - shutdown handler intercepts SIGINT
-        # so uvicorn never gets it. We must exit explicitly after cleanup.
-        sys.exit(0)
+        # Exit strategy depends on reload mode
+        if self.should_exit:
+            # Production mode: clean exit
+            logger.info("   Exiting process...")
+            sys.exit(0)
+        else:
+            # Reload mode: restore default handler and re-raise signal
+            # This allows uvicorn to handle the signal for hot reload
+            logger.info("   Re-raising signal for uvicorn to handle...")
+            signal.signal(signum or signal.SIGINT, signal.SIG_DFL)
+            if signum:
+                signal.raise_signal(signum)
 
     def register_signal_handlers(self):
         """Register SIGINT and SIGTERM handlers."""
@@ -86,5 +100,6 @@ class ShutdownManager:
         signal.signal(signal.SIGTERM, self.shutdown)
 
 
-# Global shutdown manager instance
-shutdown_manager = ShutdownManager()
+# Global shutdown manager instance (configured by main.py)
+# Default to reload_mode=False for safety
+shutdown_manager = ShutdownManager(reload_mode=False)

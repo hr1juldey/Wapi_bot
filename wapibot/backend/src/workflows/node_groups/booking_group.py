@@ -40,11 +40,16 @@ async def calculate_price(state: BookingState) -> BookingState:
 
         def extract_price_params(s):
             vehicle = s.get("vehicle", {})
+            # Wrap in price_data to match calculate_price(price_data: Dict) signature
             return {
-                "service_id": selected_service.get("product_id"),
-                "vehicle_type": vehicle.get("vehicle_type"),
-                "optional_addons": s.get("addon_ids", []),
-                "coupon_code": s.get("discount_code", "")
+                "price_data": {
+                    "service_id": selected_service.get("product_id"),
+                    "vehicle_type": vehicle.get("vehicle_type"),
+                    "optional_addons": s.get("addon_ids", []),
+                    "coupon_code": s.get("discount_code", ""),
+                    "electricity_provided": s.get("electricity_provided", 1),
+                    "water_provided": s.get("water_provided", 1)
+                }
             }
 
         logger.info("💰 Calling calculate_booking_price API...")
@@ -139,15 +144,45 @@ async def create_booking(state: BookingState) -> BookingState:
 
         logger.info(f"📱 Phone normalized: {s.get('conversation_id')} → {phone}")
 
+        # Extract booking data fields
+        product_id = selected_service.get("product_id")
+        booking_date = slot.get("date")
+        slot_id = slot.get("slot_id")
+        vehicle_id = s.get("vehicle", {}).get("vehicle_id")
+        address_id = s.get("selected_address_id") or customer.get("default_address_id")
+
+        # Validate required fields
+        missing_fields = []
+        if not product_id:
+            missing_fields.append("product_id")
+        if not booking_date:
+            missing_fields.append("booking_date")
+        if not slot_id:
+            missing_fields.append("slot_id")
+        if not vehicle_id:
+            missing_fields.append("vehicle_id")
+        if not address_id:
+            missing_fields.append("address_id")
+
+        if missing_fields:
+            logger.error(f"❌ Missing required fields: {', '.join(missing_fields)}")
+            logger.error(f"   selected_service keys: {list(selected_service.keys())}")
+            logger.error(f"   slot keys: {list(slot.keys())}")
+            logger.error(f"   vehicle keys: {list(s.get('vehicle', {}).keys())}")
+            logger.error(f"   customer keys: {list(customer.keys())}")
+
+        # Log booking data for debugging
+        logger.info(f"📋 Booking data: product_id={product_id}, date={booking_date}, slot_id={slot_id}, vehicle_id={vehicle_id}, address_id={address_id}")
+
         # Return phone_number and booking_data separately (method signature requirement)
         return {
             "phone_number": phone,
             "booking_data": {
-                "product_id": selected_service.get("product_id"),
-                "booking_date": slot.get("date"),
-                "slot_id": slot.get("slot_id"),
-                "vehicle_id": s.get("vehicle", {}).get("vehicle_id"),
-                "address_id": s.get("selected_address_id") or customer.get("default_address_id"),
+                "product_id": product_id,
+                "booking_date": booking_date,
+                "slot_id": slot_id,
+                "vehicle_id": vehicle_id,
+                "address_id": address_id,
                 "electricity_provided": s.get("electricity_provided", 1),
                 "water_provided": s.get("water_provided", 1),
                 "addon_ids": s.get("addon_ids", []),

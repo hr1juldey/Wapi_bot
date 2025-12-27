@@ -67,10 +67,17 @@ async def fetch_slots(state: BookingState) -> BookingState:
             if not slots and isinstance(response.get("message"), list):
                 slots = response["message"]
 
-            # Add date to each slot and mark as available
-            for slot in slots:
+            logger.info(f"📅 API returned {len(slots)} slot(s) for {date_str}")
+
+            # Filter only available slots (API may return unavailable ones)
+            available_slots = [slot for slot in slots if slot.get("available", True) is not False]
+
+            logger.info(f"📅 After filtering: {len(available_slots)} available slot(s) for {date_str}")
+
+            # Add date to each slot
+            for slot in available_slots:
                 slot["date"] = date_str
-                slot["available"] = slot.get("available", True)
+                slot["available"] = True  # Already filtered for available
                 # Format time_slot if not present
                 if "time_slot" not in slot:
                     start = slot.get("start_time", "")
@@ -78,10 +85,11 @@ async def fetch_slots(state: BookingState) -> BookingState:
                     if start and end:
                         slot["time_slot"] = f"{start} - {end}"
 
-            all_slots.extend(slots)
+            all_slots.extend(available_slots)
 
         except Exception as e:
-            logger.warning(f"⚠️ Failed to fetch slots for {date_str}: {e}")
+            logger.error(f"❌ Failed to fetch slots for {date_str}: {e}")
+            logger.error(f"   Response: {response if 'response' in locals() else 'No response'}")
             continue
 
     state["slot_options"] = all_slots
