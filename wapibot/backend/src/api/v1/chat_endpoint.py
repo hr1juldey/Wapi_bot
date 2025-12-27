@@ -8,7 +8,7 @@ This endpoint uses the full V2 workflow with:
 import logging
 from fastapi import APIRouter, HTTPException
 
-from schemas.chat import ChatRequest, ChatResponse
+from models.chat_schemas import ChatRequest, ChatResponse
 from workflows.shared.state import BookingState
 from workflows.v2_full_workflow import v2_full_workflow
 

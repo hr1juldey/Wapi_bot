@@ -8,60 +8,54 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from db.connection import db_connection
 from models import PaymentSession, PaymentStatus, PaymentTransaction, TransactionType
 from tasks.payment_tasks import cancel_pending_reminders
+from models.admin_payment_schemas import (
+    PaymentConfirmationRequest,
+    PaymentConfirmationResponse,
+    PaymentStatusResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/payments", tags=["admin", "payments"])
 
 
-class PaymentConfirmationRequest(BaseModel):
-    """Request model for payment confirmation."""
-
-    session_id: str = Field(..., description="Payment session UUID")
-    admin_user: str = Field(..., description="Admin email confirming payment")
-    payment_proof: str = Field(
-        default=None, description="Reference number or proof of payment"
-    )
-    notes: str = Field(default=None, description="Optional admin notes")
-
-
-class PaymentConfirmationResponse(BaseModel):
-    """Response model for payment confirmation."""
-
-    session_id: str
-    status: str
-    message: str
-    confirmed_at: str
-    confirmed_by: str
-
-
 @router.post(
     "/confirm",
     response_model=PaymentConfirmationResponse,
     status_code=status.HTTP_200_OK,
+    summary="Confirm payment received",
+    responses={
+        200: {"description": "Payment confirmed successfully"},
+        400: {
+            "description": "Payment already confirmed",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Payment already confirmed"}
+                }
+            },
+        },
+        404: {
+            "description": "Payment session not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Payment session not found"}
+                }
+            },
+        },
+    },
 )
 async def confirm_payment(
     request: PaymentConfirmationRequest,
 ) -> PaymentConfirmationResponse:
     """Confirm payment received by admin.
 
-    Marks PaymentSession as CONFIRMED, logs transaction, and cancels
-    pending reminder tasks.
-
-    Args:
-        request: Confirmation request with session_id and admin details
-
-    Returns:
-        Confirmation response with updated payment status
-
-    Raises:
-        HTTPException: If session not found or already confirmed
+    Updates payment status to CONFIRMED, logs transaction, and cancels reminders.
+    Use after verifying UPI/bank transfer in admin's payment system.
     """
     async with await db_connection.get_session() as db_session:
         # Fetch PaymentSession
@@ -124,18 +118,28 @@ async def confirm_payment(
         )
 
 
-@router.get("/status/{session_id}")
-async def get_payment_status(session_id: str) -> dict:
+@router.get(
+    "/status/{session_id}",
+    response_model=PaymentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get payment status",
+    responses={
+        200: {"description": "Payment status retrieved successfully"},
+        404: {
+            "description": "Payment session not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Payment session not found"}
+                }
+            },
+        },
+    },
+)
+async def get_payment_status(session_id: str) -> PaymentStatusResponse:
     """Get payment status for a session.
 
-    Args:
-        session_id: Payment session UUID
-
-    Returns:
-        Payment status details
-
-    Raises:
-        HTTPException: If session not found
+    Returns current status, amount, confirmation details, and reminder count.
+    Use to check if payment received or how many reminders sent.
     """
     async with await db_connection.get_session() as db_session:
         result = await db_session.execute(
@@ -151,14 +155,14 @@ async def get_payment_status(session_id: str) -> dict:
                 detail="Payment session not found",
             )
 
-        return {
-            "session_id": session.session_id,
-            "status": session.status.value,
-            "amount": session.amount,
-            "created_at": session.created_at.isoformat(),
-            "confirmed_at": session.confirmed_at.isoformat()
+        return PaymentStatusResponse(
+            session_id=session.session_id,
+            status=session.status.value,
+            amount=session.amount,
+            created_at=session.created_at.isoformat(),
+            confirmed_at=session.confirmed_at.isoformat()
             if session.confirmed_at
             else None,
-            "confirmed_by": session.confirmed_by,
-            "reminder_count": session.reminder_count,
-        }
+            confirmed_by=session.confirmed_by,
+            reminder_count=session.reminder_count,
+        )

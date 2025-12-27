@@ -5,9 +5,10 @@ import { Conversation, Message } from '@/lib/types';
 import { useConversationStore } from '@/hooks/useConversations';
 import { useOllamaChat } from '@/hooks/useOllamaChat';
 import { useFastAPIChat } from '@/hooks/useFastAPIChat';
+import { useWebSocketChat } from '@/hooks/useWebSocketChat';
 import GlassCard from '@/components/ui/GlassCard';
 import Button from '@/components/ui/Button';
-import { Send, Loader2, AlertCircle } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 
@@ -23,10 +24,17 @@ export default function ChatInterface({ conversation }: ChatInterfaceProps) {
   // Conditional hook usage based on backend mode
   const ollamaChat = useOllamaChat(conversation.id);
   const fastapiChat = useFastAPIChat(conversation.id);
+  const websocketChat = useWebSocketChat(conversation.id);
 
   // Select active chat based on mode
-  const activeChat = backendMode === 'fastapi' ? fastapiChat : ollamaChat;
+  const activeChat =
+    backendMode === 'websocket' ? websocketChat :
+    backendMode === 'fastapi' ? fastapiChat :
+    ollamaChat;
+
   const { isLoading, error, sendMessage } = activeChat;
+  const isWebSocketMode = backendMode === 'websocket';
+  const wsStatus = isWebSocketMode ? websocketChat.connectionStatus : null;
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -50,6 +58,35 @@ export default function ChatInterface({ conversation }: ChatInterfaceProps) {
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      {/* WebSocket Connection Status */}
+      {isWebSocketMode && (
+        <div className="border-b border-glass-border px-4 py-2 bg-glass-white/10 backdrop-blur-glass">
+          <div className="flex items-center gap-2 text-sm">
+            {wsStatus === 'connected' ? (
+              <>
+                <Wifi className="w-4 h-4 text-green-400" />
+                <span className="text-green-400">Connected (Real-time)</span>
+              </>
+            ) : wsStatus === 'connecting' ? (
+              <>
+                <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                <span className="text-yellow-400">Connecting...</span>
+              </>
+            ) : wsStatus === 'error' ? (
+              <>
+                <WifiOff className="w-4 h-4 text-red-400" />
+                <span className="text-red-400">Connection Error</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-4 h-4 text-gray-400" />
+                <span className="text-gray-400">Disconnected</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Message Area */}
       <div className="flex-1 overflow-y-auto scrollbar-glass p-4 space-y-3">
         {conversation.messages.length === 0 ? (

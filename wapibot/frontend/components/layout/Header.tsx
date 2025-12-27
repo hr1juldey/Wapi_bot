@@ -163,12 +163,13 @@ export default function Header() {
             <select
               value={backendMode}
               onChange={(e) =>
-                setBackendMode(e.target.value as 'ollama' | 'fastapi')
+                setBackendMode(e.target.value as 'ollama' | 'fastapi' | 'websocket')
               }
               className="bg-transparent text-white font-medium outline-none text-sm cursor-pointer"
             >
               <option value="ollama" className="bg-zinc-800">Ollama</option>
-              <option value="fastapi" className="bg-zinc-800">FastAPI</option>
+              <option value="fastapi" className="bg-zinc-800">FastAPI (HTTP)</option>
+              <option value="websocket" className="bg-zinc-800">WebSocket (Real-time)</option>
             </select>
           </div>
 

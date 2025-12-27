@@ -19,9 +19,14 @@ class DSPyConfigurator:
         self.primary_lm = None
         self.provider = settings.primary_llm_provider
 
-    def _get_ollama_lm(self) -> dspy.LM:
-        """Initialize Ollama LLM."""
-        model_name = f"ollama_chat/{settings.ollama_model}"
+    def _get_ollama_lm(self, model_override: str = None) -> dspy.LM:
+        """Initialize Ollama LLM.
+
+        Args:
+            model_override: Override default model (for teacher LLM)
+        """
+        model = model_override or settings.ollama_model
+        model_name = f"ollama_chat/{model}"
         logger.info(f"Initializing Ollama: {model_name}")
 
         return dspy.LM(
@@ -61,10 +66,15 @@ class DSPyConfigurator:
         logger.info(f"✅ DSPy configured with {self.provider}")
 
     @contextmanager
-    def use_provider(self, provider: str):
-        """Temporarily switch to different LLM provider."""
+    def use_provider(self, provider: str, model_override: str = None):
+        """Temporarily switch to different LLM provider.
+
+        Args:
+            provider: Provider name (ollama, openrouter, openai)
+            model_override: Override default model (for GEPA teacher LLM)
+        """
         if provider == "ollama":
-            temp_lm = self._get_ollama_lm()
+            temp_lm = self._get_ollama_lm(model_override)
         elif provider == "openrouter":
             temp_lm = self._get_openrouter_lm()
         elif provider == "openai":
@@ -81,6 +91,22 @@ class DSPyConfigurator:
         finally:
             # Restore original LLM
             dspy.configure(lm=original_lm)
+
+    @contextmanager
+    def use_teacher_lm(self, teacher_model: str = "qwen3:8b"):
+        """Context manager for GEPA teacher LLM.
+
+        Args:
+            teacher_model: Teacher model name (default: qwen3:8b)
+
+        Usage:
+            with dspy_configurator.use_teacher_lm():
+                optimizer = dspy.GEPA(metric=metric)
+                optimized = optimizer.compile(baseline, trainset=data)
+        """
+        logger.info(f"👨‍🏫 Switching to teacher LLM: {teacher_model}")
+        with self.use_provider("ollama", model_override=teacher_model) as teacher_lm:
+            yield teacher_lm
 
 
 # Global configurator instance

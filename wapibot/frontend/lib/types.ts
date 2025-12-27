@@ -2,7 +2,7 @@
  * Core type definitions for WapiBot frontend
  */
 
-export type BackendMode = 'ollama' | 'fastapi';
+export type BackendMode = 'ollama' | 'fastapi' | 'websocket';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 

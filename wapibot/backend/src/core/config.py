@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     enable_sentiment_analysis: bool = True
     enable_intent_classification: bool = True
 
+    # Business Policies
+    cancellation_free_hours: int = 24  # Free cancellation if booking >24h away
+    support_whatsapp_number: str = "+919876543210"  # Human escalation number
+
     # LangGraph Configuration
     langgraph_checkpoint_enabled: bool = True
     langgraph_checkpoint_path: str = "./checkpoints.db"
@@ -138,6 +142,16 @@ class Settings(BaseSettings):
     # Celery Configuration
     celery_broker_url: str = "redis://localhost:6379/0"  # Redis broker for tasks
     celery_result_backend: str = "redis://localhost:6379/1"  # Redis result backend
+
+    # WebSocket Configuration
+    websocket_enabled: bool = True  # Enable WebSocket chat endpoints
+    websocket_ping_interval: int = 30  # Heartbeat ping interval (seconds)
+    websocket_max_connections_per_user: int = 200  # Max concurrent connections per user
+    websocket_db_path: str = "backend/data/websocket_sessions.db"  # Audit log database
+
+    # Redis Streams Configuration (for WebSocket message delivery)
+    redis_stream_name: str = "chat_messages"  # Stream name for chat messages
+    redis_consumer_group: str = "websocket_workers"  # Consumer group for load balancing
 
     @field_validator(
         'payment_reminder_intervals',

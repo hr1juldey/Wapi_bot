@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from typing import Optional
 
 from core.config import settings
-from schemas.wapi import WAPIWebhookPayload, WAPIResponse
+from core.brain_config import get_brain_settings
+from models.wapi_schemas import WAPIWebhookPayload, WAPIResponse
 from workflows.shared.state import BookingState
+from workflows.node_groups.brain_group import create_brain_workflow
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/wapi", tags=["WAPI"])
@@ -77,42 +79,39 @@ def verify_webhook_signature(payload_body: bytes, signature: str) -> bool:
     return hmac.compare_digest(signature, expected_signature)
 
 
-@router.post("/webhook", response_model=WAPIResponse)
+@router.post(
+    "/webhook",
+    response_model=WAPIResponse,
+    summary="Handle WhatsApp messages from WAPI",
+    responses={
+        200: {"description": "Message received and processed successfully"},
+        401: {
+            "description": "Invalid webhook signature",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Invalid webhook signature"}
+                }
+            },
+        },
+        500: {
+            "description": "Workflow execution failed",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Workflow execution failed"}
+                }
+            },
+        },
+    },
+)
 async def wapi_webhook(
     request: Request,
     payload: WAPIWebhookPayload,
     x_wapi_signature: Optional[str] = Header(None, alias="X-WAPI-Signature")
 ) -> WAPIResponse:
-    """
-    Handle incoming WhatsApp messages from WAPI with signature validation.
+    """Handle incoming WhatsApp messages from WAPI with signature validation.
 
-    **Security:**
-    - Validates HMAC-SHA256 signature from X-WAPI-Signature header
-    - Rejects requests with invalid or missing signatures (in production)
-
-    **Flow:**
-    1. Validate webhook signature using HMAC-SHA256
-    2. Extract message from WAPI format
-    3. Convert to internal BookingState
-    4. Run LangGraph workflow
-    5. Send response via WAPI API
-
-    **Example Webhook Payload:**
-    ```json
-    {
-      "contact": {
-        "phone_number": "919876543210",
-        "first_name": "Ravi"
-      },
-      "message": {
-        "whatsapp_message_id": "wamid.abc123",
-        "body": "I want to book a car wash"
-      }
-    }
-    ```
-
-    **Headers:**
-    - X-WAPI-Signature: HMAC-SHA256 signature of request body
+    Validates HMAC-SHA256 signature, processes message through LangGraph workflow,
+    and sends response via WAPI API. Security: Rejects invalid signatures in production.
     """
     try:
         # Security: Verify webhook signature
@@ -165,6 +164,7 @@ async def wapi_webhook(
             logger.info(f"Resuming conversation for {phone}")
         else:
             # New conversation - initialize state
+            brain_settings = get_brain_settings()
             state: BookingState = {
                 "conversation_id": phone,
                 "user_message": body,
@@ -199,11 +199,44 @@ async def wapi_webhook(
                 "total_price": None,
                 "confirmed": None,
                 "gate_decision": None,
+                # Brain system fields
+                "conflict_detected": None,
+                "predicted_intent": None,
+                "conversation_quality": 0.5,
+                "booking_completeness": 0.0,
+                "user_satisfaction": None,
+                "decomposed_goals": None,
+                "required_info": None,
+                "proposed_response": None,
+                "brain_mode": brain_settings.brain_mode,
+                "action_taken": None,
+                "brain_confidence": 0.0,
+                "brain_decision_id": None,
+                "dream_applied": False,
+                "recalled_memories": None,
+                "generated_dreams": None,
+                "can_dream": False,
+                "dream_status": None,
             }
             logger.info(f"Starting new conversation for {phone}")
 
         # Run workflow with config for checkpointing
         result = await workflow.ainvoke(state, config=config)
+
+        # Run brain workflow (observes conversation in parallel)
+        brain_settings = get_brain_settings()
+        if brain_settings.brain_enabled:
+            try:
+                logger.info(f"🧠 Running brain in {brain_settings.brain_mode} mode")
+                brain_workflow = create_brain_workflow()
+                # Brain observes the completed conversation (with response)
+                brain_result = await brain_workflow.ainvoke(result)
+                # Update state with brain observations
+                result.update(brain_result)
+                logger.info(f"🧠 Brain processing complete")
+            except Exception as e:
+                logger.error(f"🧠 Brain processing failed: {e}", exc_info=True)
+                # Brain failure doesn't block main workflow
 
         # Check if workflow already sent messages (via send_message_node)
         # send_message_node sends directly via WAPI, so no need to send again
