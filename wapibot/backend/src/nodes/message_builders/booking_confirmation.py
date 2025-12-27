@@ -72,17 +72,27 @@ class BookingConfirmationBuilder:
 
         # Service details
         product_name = service.get("product_name", "Service")
-        message += f"Service: {product_name}\n"
+        base_price = service.get("base_price", 0)
+        message += f"Service: {product_name} - ₹{base_price}\n"
+
+        # Addon details
+        selected_addons = state.get("selected_addons", [])
+        if selected_addons:
+            message += "\n*Add-ons:*\n"
+            for addon in selected_addons:
+                addon_name = addon.get("addon_name", addon.get("name", "Addon"))
+                addon_price = addon.get("unit_price", 0)
+                message += f"• {addon_name} - ₹{addon_price}\n"
 
         # Appointment details
         date = appointment.get("date", "")
         time_slot = appointment.get("time_slot", "")
         if date:
-            message += f"Date: {date}\n"
+            message += f"\nDate: {date}\n"
         if time_slot:
             message += f"Time: {time_slot}\n"
 
-        # Price
+        # Price breakdown
         message += f"\n💰 Total: ₹{total_price}\n\n"
 
         # Confirmation prompt

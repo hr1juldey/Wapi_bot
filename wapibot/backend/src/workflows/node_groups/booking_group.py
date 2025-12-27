@@ -207,15 +207,15 @@ async def create_booking(state: BookingState) -> BookingState:
     api_response = result.get("booking_api_response", {})
     message = api_response.get("message", {})
 
-    # Store unwrapped booking data - preserve all state fields
-    result.update(state)  # Ensure all previous state is included
-    result["booking_response"] = message
-    result["booking_id"] = message.get("booking_id", "Unknown")
-    result["booking_data"] = message.get("booking_data", {})
+    # Preserve state and merge in new booking data
+    state["booking_response"] = message
+    state["booking_id"] = message.get("booking_id", "Unknown")
+    state["booking_data"] = message.get("booking_data", {})
 
-    logger.info(f"✅ Booking created: {result.get('booking_id')}")
-    logger.info(f"📋 Booking ID stored in state: {result.get('booking_id')}")
-    return result
+    logger.info(f"✅ Booking created: {state.get('booking_id')}")
+    logger.info(f"📋 Booking ID in state: {state.get('booking_id')}")
+    logger.info(f"📋 State keys: {list(state.keys())}")
+    return state
 
 
 async def generate_payment_qr(state: BookingState) -> BookingState:
