@@ -50,7 +50,7 @@ def node(
         }
 
         # Run quality evaluation
-        result = evaluator.forward(
+        result = evaluator(
             conversation_history=history,
             booking_state=booking_state
         )

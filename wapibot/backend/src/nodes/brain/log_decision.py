@@ -4,6 +4,7 @@ import logging
 from typing import Protocol
 from datetime import datetime
 import uuid
+import json
 from models.brain_state import BrainState
 from models.brain_decision import BrainDecision
 
@@ -41,21 +42,36 @@ def node(
         # Generate decision ID
         decision_id = str(uuid.uuid4())
 
+        # Serialize conversation history and state snapshot
+        history = state.get("history", [])
+        conversation_history = json.dumps(history) if history else "[]"
+
+        # Create state snapshot (key fields only)
+        state_snapshot = json.dumps({
+            "profile_complete": state.get("profile_complete", False),
+            "vehicle_selected": state.get("vehicle_selected", False),
+            "service_selected": state.get("service_selected", False),
+            "slot_selected": state.get("slot_selected", False),
+            "confirmed": state.get("confirmed")
+        })
+
         # Create decision record
         decision = BrainDecision(
             decision_id=decision_id,
             conversation_id=state.get("conversation_id", "unknown"),
             timestamp=datetime.utcnow(),
             user_message=state.get("user_message", ""),
+            conversation_history=conversation_history,
+            state_snapshot=state_snapshot,
             conflict_detected=state.get("conflict_detected"),
             predicted_intent=state.get("predicted_intent"),
             proposed_response=state.get("proposed_response"),
-            actual_response=state.get("response"),  # Workflow's response
-            brain_confidence=state.get("brain_confidence", 0.0),
-            conversation_quality=state.get("conversation_quality", 0.5),
+            confidence=state.get("brain_confidence", 0.0),
+            brain_mode=state.get("brain_mode", "shadow"),
+            action_taken=state.get("action_taken"),
+            response_sent=state.get("response"),
             user_satisfaction=state.get("user_satisfaction"),
-            workflow_outcome=None,  # Will be updated later
-            dream_applied=state.get("dream_applied", False)
+            workflow_outcome=None  # Will be updated later
         )
 
         # Save to RL Gym database

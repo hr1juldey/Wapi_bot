@@ -54,7 +54,7 @@ def node(
             return state
 
         # Run intent prediction
-        result = predictor.forward(
+        result = predictor(
             conversation_history=history,
             user_message=user_message,
             booking_state=booking_state

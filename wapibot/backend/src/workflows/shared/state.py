@@ -33,6 +33,10 @@ class BookingState(TypedDict):
     addresses: Optional[List[Dict[str, Any]]]  # Customer addresses from profile
     profile_error: Optional[str]  # Error message from profile fetch
 
+    # Address Selection
+    selected_address_id: Optional[str]  # Selected address ID for booking
+    address_selected: bool  # True if address selected
+
     # Vehicle Selection (for multi-vehicle customers)
     vehicle_options: Optional[List[Dict[str, Any]]]  # Available vehicles to choose from
     vehicle_selected: bool  # True if valid vehicle selected
@@ -69,6 +73,7 @@ class BookingState(TypedDict):
     # Addon Selection
     available_addons: Optional[List[Dict[str, Any]]]  # Addons available for selected service
     selected_addons: Optional[List[Dict[str, Any]]]  # User's selected addons
+    addon_ids: Optional[List[str]]  # Selected addon IDs (for API calls)
     addon_selection_complete: bool  # True if user finished addon selection
     skipped_addons: bool  # True if user explicitly skipped addons
 
@@ -87,8 +92,14 @@ class BookingState(TypedDict):
     grouped_slots: Optional[Dict[str, List[Dict[str, Any]]]]  # Slots grouped by time of day
     filtered_slot_options: Optional[List[Dict[str, Any]]]  # Filtered slots by preference
 
+    # Utilities Collection (for booking_by_phone API)
+    electricity_provided: Optional[int]  # 1 (yes) or 0 (no)
+    water_provided: Optional[int]  # 1 (yes) or 0 (no)
+
     # Pricing & Confirmation
     total_price: Optional[float]  # Calculated total price
+    price_breakdown: Optional[Dict[str, Any]]  # {base_price, addon_price, discount, tax, total_price}
+    discount_code: Optional[str]  # Discount/coupon code (for future promo flow)
     confirmed: Optional[bool]  # True=confirmed, False=cancelled, None=unclear
 
     # Booking Result

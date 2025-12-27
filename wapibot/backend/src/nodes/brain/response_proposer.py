@@ -62,7 +62,7 @@ def node(
             return state
 
         # Run response generation (BestOfN + Refine)
-        result = generator.forward(
+        result = generator(
             conversation_history=history,
             user_message=user_message,
             sub_goals=sub_goals,

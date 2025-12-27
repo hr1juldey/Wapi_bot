@@ -31,12 +31,54 @@ logger = logging.getLogger(__name__)
 
 
 async def calculate_price(state: BookingState) -> BookingState:
-    """Calculate total price."""
+    """Calculate real price using Frappe API (handles addons, discounts, taxes)."""
     selected_service = state.get("selected_service", {})
     base_price = selected_service.get("base_price", 0)
-    state["total_price"] = base_price
-    logger.info(f"💰 Calculated price: ₹{base_price}")
-    return state
+
+    try:
+        client = get_yawlit_client()
+
+        def extract_price_params(s):
+            vehicle = s.get("vehicle", {})
+            return {
+                "service_id": selected_service.get("product_id"),
+                "vehicle_type": vehicle.get("vehicle_type"),
+                "optional_addons": s.get("addon_ids", []),
+                "coupon_code": s.get("discount_code", "")
+            }
+
+        logger.info("💰 Calling calculate_booking_price API...")
+        result = await call_frappe_node(
+            state,
+            client.booking_create.calculate_price,
+            "price_breakdown",
+            state_extractor=extract_price_params
+        )
+
+        # Extract total_price from API response
+        price_breakdown = result.get("price_breakdown", {})
+        total_price = price_breakdown.get("total_price")
+
+        if total_price and total_price > 0:
+            result["total_price"] = total_price
+            logger.info(f"💰 API price: ₹{total_price} (base: {price_breakdown.get('base_price', 0)}, addons: {price_breakdown.get('addon_price', 0)}, tax: {price_breakdown.get('tax', 0)})")
+            return result
+        else:
+            # API returned invalid price, use fallback
+            raise ValueError("Invalid price from API")
+
+    except Exception as e:
+        # Fallback to base price
+        logger.warning(f"Price calculation failed: {e}. Using base_price: ₹{base_price}")
+        state["total_price"] = base_price
+        state["price_breakdown"] = {
+            "base_price": base_price,
+            "addon_price": 0,
+            "discount": 0,
+            "tax": 0,
+            "total_price": base_price
+        }
+        return state
 
 
 async def send_confirmation(state: BookingState) -> BookingState:
@@ -76,7 +118,7 @@ async def route_confirmation(state: BookingState) -> str:
 
 
 async def create_booking(state: BookingState) -> BookingState:
-    """Create booking in Frappe using YawlitClient."""
+    """Create booking using phone-based API (no session required)."""
     client = get_yawlit_client()
 
     def extract_booking_params(s):
@@ -84,21 +126,36 @@ async def create_booking(state: BookingState) -> BookingState:
         selected_service = s.get("selected_service", {})
         slot = s.get("slot", {})
 
+        # Extract and normalize phone from conversation_id
+        phone = s.get("conversation_id", "")
+        # Remove country code (91) if present
+        if phone.startswith("91") and len(phone) == 12:
+            phone = phone[2:]  # Extract last 10 digits
+        elif len(phone) == 10:
+            phone = phone  # Already in correct format
+        else:
+            logger.warning(f"Unexpected phone format: {phone}")
+            phone = phone[-10:]  # Fallback: take last 10 digits
+
+        logger.info(f"📱 Phone normalized: {s.get('conversation_id')} → {phone}")
+
         return {
-            "customer_uuid": customer.get("customer_uuid"),
-            "service_id": selected_service.get("product_id"),
-            "vehicle_id": s.get("vehicle", {}).get("vehicle_id"),
+            "phone_number": phone,
+            "product_id": selected_service.get("product_id"),
+            "booking_date": slot.get("date"),
             "slot_id": slot.get("slot_id"),
-            "date": slot.get("date"),
-            "address_id": customer.get("default_address_id"),
-            "optional_addons": [],
-            "special_instructions": ""
+            "vehicle_id": s.get("vehicle", {}).get("vehicle_id"),
+            "address_id": s.get("selected_address_id") or customer.get("default_address_id"),
+            "electricity_provided": s.get("electricity_provided", 1),
+            "water_provided": s.get("water_provided", 1),
+            "addon_ids": s.get("addon_ids", []),
+            "payment_mode": "Pay Now"
         }
 
-    logger.info("📝 Creating booking...")
+    logger.info("📝 Creating booking via create_booking_by_phone...")
     return await call_frappe_node(
         state,
-        client.booking_create.create_booking,
+        client.booking_create.create_booking_by_phone,
         "booking_response",
         state_extractor=extract_booking_params
     )
@@ -107,7 +164,9 @@ async def create_booking(state: BookingState) -> BookingState:
 async def generate_payment_qr(state: BookingState) -> BookingState:
     """Generate UPI QR code for payment."""
     amount = state.get("total_price")
-    booking_id = state.get("booking_response", {}).get("booking_id", "Unknown")
+    # Backward-compatible extraction (new API: direct field, old API: nested in message)
+    booking_response = state.get("booking_response", {})
+    booking_id = booking_response.get("booking_id") or booking_response.get("message", {}).get("booking_id", "Unknown")
 
     return await generate_qr_node(
         state,
@@ -148,8 +207,8 @@ async def send_success(state: BookingState) -> BookingState:
 
     def success_message(s):
         booking_response = s.get("booking_response", {})
-        message = booking_response.get("message", {})
-        booking_id = message.get("booking_id", "Unknown")
+        # Backward-compatible extraction (new API: direct field, old API: nested in message)
+        booking_id = booking_response.get("booking_id") or booking_response.get("message", {}).get("booking_id", "Unknown")
         return f"✅ Booking confirmed!\n\nYour booking ID is: {booking_id}\n\nWe'll send you a confirmation shortly. Thank you for choosing Yawlit!"
 
     return await send_message_node(state, success_message)

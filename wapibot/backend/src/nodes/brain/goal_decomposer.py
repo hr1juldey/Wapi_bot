@@ -55,7 +55,7 @@ def node(
             return state
 
         # Run goal decomposition
-        result = decomposer.forward(
+        result = decomposer(
             user_message=user_message,
             predicted_intent=predicted_intent,
             booking_state=booking_state
