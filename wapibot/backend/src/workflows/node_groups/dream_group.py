@@ -71,14 +71,14 @@ def create_dream_workflow() -> StateGraph:
 
     # Add nodes
     workflow.add_node("recall",
-        lambda s: recall_memories.node(
+        lambda s: recall_memories(
             s,
             memory_repo,
             min_memories=settings.dream_min_conversations
         ))
 
     workflow.add_node("generate",
-        lambda s: generate_dreams.node(
+        lambda s: generate_dreams(
             s,
             dream_gen,
             model=settings.dream_ollama_model,

@@ -54,9 +54,9 @@ def create_reflex_workflow() -> StateGraph:
 
     # Add nodes
     workflow.add_node("monitor_conflict",
-        lambda s: conflict_monitor.node(s, conflict_detector))
+        lambda s: conflict_monitor(s, conflict_detector))
     workflow.add_node("log_to_gym",
-        lambda s: log_decision.node(s, decision_repo))
+        lambda s: log_decision(s, decision_repo))
 
     # Simple reflex routing
     workflow.set_entry_point("monitor_conflict")

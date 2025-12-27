@@ -47,17 +47,17 @@ def create_shadow_workflow() -> StateGraph:
 
     # Add brain processing nodes
     workflow.add_node("monitor_conflict",
-        lambda s: conflict_monitor.node(s, conflict_detector))
+        lambda s: conflict_monitor(s, conflict_detector))
     workflow.add_node("predict_intent",
-        lambda s: intent_predictor.node(s, intent_pred))
+        lambda s: intent_predictor(s, intent_pred))
     workflow.add_node("evaluate_quality",
-        lambda s: state_evaluator.node(s, quality_eval))
+        lambda s: state_evaluator(s, quality_eval))
     workflow.add_node("decompose_goals",
-        lambda s: goal_decomposer.node(s, goal_decomp))
+        lambda s: goal_decomposer(s, goal_decomp))
     workflow.add_node("propose_response",
-        lambda s: response_proposer.node(s, response_gen))
+        lambda s: response_proposer(s, response_gen))
     workflow.add_node("log_to_gym",
-        lambda s: log_decision.node(s, decision_repo))
+        lambda s: log_decision(s, decision_repo))
 
     # Linear flow: observe → process → log (no action)
     workflow.set_entry_point("monitor_conflict")
