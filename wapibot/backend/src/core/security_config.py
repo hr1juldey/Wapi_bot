@@ -3,7 +3,7 @@
 Auto-hardens security settings in production environment.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional
 
@@ -63,9 +63,11 @@ class SecuritySettings(BaseSettings):
         """Check if running in development environment."""
         return self.environment == "development"
 
-    class Config:
-        env_file = ".env.txt"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env.txt",
+        case_sensitive=False,
+        extra="ignore"  # Ignore extra fields from .env.txt
+    )
 
 
 # Global security settings instance
