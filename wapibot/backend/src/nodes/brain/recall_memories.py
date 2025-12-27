@@ -15,7 +15,7 @@ class MemoryRepository(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     repo: MemoryRepository,
     min_memories: int = 50

@@ -19,7 +19,7 @@ class ConflictDetector(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     detector: ConflictDetector
 ) -> BrainState:

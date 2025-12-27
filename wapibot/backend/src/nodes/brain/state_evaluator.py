@@ -19,7 +19,7 @@ class QualityEvaluator(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     evaluator: QualityEvaluator
 ) -> BrainState:

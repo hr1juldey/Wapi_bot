@@ -19,7 +19,7 @@ class GoalDecomposer(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     decomposer: GoalDecomposer
 ) -> BrainState:

@@ -19,7 +19,7 @@ class IntentPredictor(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     predictor: IntentPredictor
 ) -> BrainState:

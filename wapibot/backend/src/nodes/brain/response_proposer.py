@@ -25,7 +25,7 @@ class ResponseGenerator(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     generator: ResponseGenerator
 ) -> BrainState:

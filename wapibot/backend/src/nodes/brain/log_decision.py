@@ -18,7 +18,7 @@ class DecisionRepository(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     repo: DecisionRepository
 ) -> BrainState:

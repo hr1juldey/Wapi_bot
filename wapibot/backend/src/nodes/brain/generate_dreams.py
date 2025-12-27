@@ -23,7 +23,7 @@ class DreamGenerator(Protocol):
         ...
 
 
-async def node(
+def node(
     state: BrainState,
     generator: DreamGenerator,
     model: str = "llama3.2",
