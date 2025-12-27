@@ -15,6 +15,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "httpx>=0.25.0",
     "isort>=5.13.0",
+    "jwt>=1.4.0",
     "langchain-core>=0.3.0",
     "langgraph>=0.2.40",
     "langgraph-checkpoint-sqlite>=2.0.0",
