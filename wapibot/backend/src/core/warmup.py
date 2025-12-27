@@ -7,10 +7,10 @@ Prevents cold-start delays by:
 
 import asyncio
 import logging
-import os
+
 import random
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Optional
 from datetime import datetime
 
 from core.config import settings
@@ -132,7 +132,7 @@ class WarmupService:
                         ),
                         timeout=self.warmup_timeout  # From config (hardware dependent)
                     )
-                    logger.info(f"✅ Warmup {i} complete")
+                    #logger.info(f"✅ Warmup {i} complete")
 
                 except asyncio.TimeoutError:
                     logger.warning(f"⏱️  Warmup {i} timed out (model still loading?)")

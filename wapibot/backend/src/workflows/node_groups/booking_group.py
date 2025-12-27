@@ -40,14 +40,17 @@ async def calculate_price(state: BookingState) -> BookingState:
 
         def extract_price_params(s):
             # Wrap in price_data because calculate_price(price_data: Dict) expects it
-            return {
+            addon_ids = s.get("addon_ids", [])
+            price_params = {
                 "price_data": {
                     "product_id": selected_service.get("name"),
-                    "optional_addons": s.get("addon_ids", []),
+                    "optional_addons": addon_ids,
                     "electricity_provided": s.get("electricity_provided", 1),
                     "water_provided": s.get("water_provided", 1)
                 }
             }
+            logger.info(f"💰 Price params: product={selected_service.get('name')}, addons={addon_ids}, elec={s.get('electricity_provided', 1)}, water={s.get('water_provided', 1)}")
+            return price_params
 
         logger.info("💰 Calling calculate_booking_price API...")
         result = await call_frappe_node(
@@ -64,7 +67,10 @@ async def calculate_price(state: BookingState) -> BookingState:
 
         if total_price and total_price > 0:
             result["total_price"] = total_price
-            logger.info(f"💰 API price: ₹{total_price} (base: {price_breakdown.get('base_price', 0)}, addons: {price_breakdown.get('addon_price', 0)}, tax: {price_breakdown.get('tax', 0)})")
+            # Try both field names (addon_price and addons_total)
+            addon_amount = price_breakdown.get('addon_price', 0) or price_breakdown.get('addons_total', 0)
+            logger.info(f"💰 API price: ₹{total_price} (base: {price_breakdown.get('base_price', 0)}, addons: {addon_amount}, tax: {price_breakdown.get('tax', 0)})")
+            logger.info(f"💰 Full price breakdown: {price_breakdown}")
             return result
         else:
             # API returned invalid price, use fallback
