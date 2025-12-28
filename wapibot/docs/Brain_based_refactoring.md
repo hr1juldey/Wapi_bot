@@ -1,4 +1,4 @@
-# Bottom-Up Brain Integration: Proper Architecture
+# Bottom-Up Brain Integration: Proper Architecture 
 
 ## Problem Summary
 
