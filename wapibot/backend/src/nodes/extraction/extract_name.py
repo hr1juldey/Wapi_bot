@@ -1,141 +1,64 @@
-"""Name extraction node with 3-tier resilience.
+"""Domain node: Name extraction.
 
-Tier 1: DSPy LLM extraction (best quality)
-Tier 2: Regex fallback (fast, reliable)
-Tier 3: Ask user (graceful degradation)
+Refactored to use atomic extract.node() - eliminates 82 lines of duplication.
+Follows DRY principle: extraction logic lives in atomic layer.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
 from workflows.shared.state import BookingState
-from core.config import settings
+from nodes.atomic import extract
+from dspy_modules.extractors.name_extractor import NameExtractor
+from fallbacks.name_fallback import RegexNameExtractor
 
 logger = logging.getLogger(__name__)
 
 
-# Tier 1: DSPy Extraction (best quality, LLM-based)
-async def extract_name_dspy(
-    state: BookingState,
-    timeout: Optional[float] = None
-) -> Dict[str, Any]:
-    """Extract name using DSPy module (LLM-based).
+def regex_fallback(message: str) -> Dict[str, Any]:
+    """Regex fallback for name extraction.
+
+    Uses existing RegexNameExtractor from fallbacks layer.
 
     Args:
-        state: Current booking state
-        timeout: Extraction timeout in seconds (default: from config)
+        message: User message
+
+    Returns:
+        Dict with first_name and last_name
     """
-    try:
-        from dspy_modules.extractors.name_extractor import NameExtractor
-        extractor = NameExtractor()
-
-        # Use parameter or fall back to config (no magic numbers!)
-        extraction_timeout = timeout if timeout is not None else settings.extraction_timeout_normal
-
-        # Run DSPy extraction in thread pool (DSPy is sync)
-        loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                lambda: extractor(
-                    conversation_history=state.get("history", []),
-                    user_message=state["user_message"],
-                    context="Collecting customer name for car wash booking"
-                )
-            ),
-            timeout=extraction_timeout  # From config or parameter (hardware dependent)
-        )
-
-        # Return extracted data
-        return {
-            "first_name": result["first_name"],
-            "last_name": result["last_name"],
-            "extraction_method": "dspy",
-            "confidence": result["confidence"]
-        }
-
-    except (TimeoutError, ConnectionError) as e:
-        logger.warning(f"DSPy extraction timeout: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"DSPy extraction failed: {e}")
-        raise
-
-
-# Tier 2: Regex Fallback (fast, reliable)
-async def extract_name_regex(state: BookingState) -> Dict[str, Any]:
-    """Extract name using regex fallback."""
-    from fallbacks.name_fallback import RegexNameExtractor
-
     extractor = RegexNameExtractor()
-    result = extractor.extract(state["user_message"])
+    result = extractor.extract(message)
 
     if result:
-        logger.info(f"✅ Regex extracted: {result['first_name']}")
-        return {
-            **result,
-            "extraction_method": "regex",
-            "confidence": settings.confidence_medium  # From config, not hardcoded
-        }
+        logger.debug(f"Regex extracted name: {result['first_name']}")
+        return result
 
-    raise ValueError("Regex extraction failed")
+    raise ValueError("Regex name extraction failed")
 
 
-# Main Node Function
 async def node(
     state: BookingState,
     timeout: Optional[float] = None
 ) -> BookingState:
-    """
-    Extract customer name with 3-tier resilience.
+    """Extract customer name using atomic extract.node().
 
-    Tier 1: Try DSPy (LLM-based, best quality)
-    Tier 2: Try Regex (fast, reliable)
-    Tier 3: Ask user (graceful degradation)
+    Tier 1: DSPy extraction (via extract.node)
+    Tier 2: Regex fallback (via extract.node)
+    Tier 3: Graceful degradation (handled by atomic layer)
 
     Args:
         state: Current booking state
-        timeout: Extraction timeout (default: from config)
+        timeout: Optional extraction timeout
+
+    Returns:
+        Updated state with customer.first_name and customer.last_name
     """
+    extractor = NameExtractor()
 
-    # Tier 1: Try DSPy extraction
-    try:
-        name_data = await extract_name_dspy(state, timeout=timeout)
-
-        # Update state with extracted name
-        if not state.get("customer"):
-            state["customer"] = {}
-
-        state["customer"].update(name_data)
-        state["current_step"] = "extract_phone"
-        logger.info(f"✅ Name extracted (DSPy): {name_data['first_name']}")
-        return state
-
-    except Exception as dspy_error:
-        logger.warning(f"Tier 1 (DSPy) failed: {dspy_error}")
-
-        # Tier 2: Try regex fallback
-        try:
-            name_data = await extract_name_regex(state)
-
-            if not state.get("customer"):
-                state["customer"] = {}
-
-            state["customer"].update(name_data)
-            state["current_step"] = "extract_phone"
-            logger.info(
-                f"✅ Name extracted (Regex fallback): {name_data['first_name']}"
-            )
-            return state
-
-        except Exception as regex_error:
-            logger.warning(f"Tier 2 (Regex) failed: {regex_error}")
-
-            # Tier 3: Graceful degradation - ask user
-            logger.warning("⚠️ All extraction failed, asking user")
-            state["response"] = "I didn't catch your name. What's your name?"
-            state["current_step"] = "extract_name"  # Stay in same step
-            if "errors" not in state:
-                state["errors"] = []
-            state["errors"].append("name_extraction_failed")
-            return state
+    return await extract.node(
+        state,
+        extractor,
+        field_path="customer",  # Will set customer.first_name, customer.last_name
+        fallback_fn=regex_fallback,
+        timeout=timeout,
+        metadata_path="extraction.name_meta"
+    )

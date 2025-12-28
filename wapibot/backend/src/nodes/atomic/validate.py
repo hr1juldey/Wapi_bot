@@ -15,38 +15,13 @@ Usage:
 """
 
 import logging
-from typing import Any, Type, Optional
+from typing import Type, Optional, Literal
 from pydantic import BaseModel, ValidationError
 from workflows.shared.state import BookingState
+from core.brain_config import get_brain_settings
+from utils.field_utils import get_nested_field, set_nested_field
 
 logger = logging.getLogger(__name__)
-
-
-def get_nested_field(state: BookingState, field_path: str) -> Any:
-    """Get nested field from state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
-
-    return current
-
-
-def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
-    """Set nested field in state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts[:-1]:
-        if part not in current or current[part] is None:
-            current[part] = {}
-        current = current[part]
-
-    current[parts[-1]] = value
 
 
 async def node(
@@ -54,7 +29,7 @@ async def node(
     model: Type[BaseModel],
     data_path: str,
     fields_to_validate: Optional[list[str]] = None,
-    on_failure: str = "log"
+    on_failure: Optional[Literal["log", "clear", "raise"]] = None
 ) -> BookingState:
     """Atomic validation node - works with ANY Pydantic model.
 
@@ -64,27 +39,16 @@ async def node(
         data_path: Path to data in state (e.g., "customer", "vehicle")
         fields_to_validate: Optional list of specific fields to validate
                            If None, validates all fields in the data
-        on_failure: Action on validation failure:
+        on_failure: Action on validation failure (default: from brain settings)
                    - "log": Log error but continue
                    - "clear": Clear invalid data
                    - "raise": Raise exception
-
-    Returns:
-        Updated state with validation results
-
-    Example:
-        # Validate customer name with Name model
-        from models.customer import Name
-        state = await validate.node(state, Name, "customer", ["first_name"])
-
-        # Validate phone with Phone model
-        from models.customer import Phone
-        state = await validate.node(state, Phone, "customer", ["phone_number"])
-
-        # Validate entire vehicle object
-        from models.vehicle import Vehicle
-        state = await validate.node(state, Vehicle, "vehicle")
     """
+    # Brain-aware defaults
+    brain_settings = get_brain_settings()
+    if on_failure is None:
+        on_failure = "log" if brain_settings.brain_mode == "reflex" else "clear"
+
     # Get data from state
     data = get_nested_field(state, data_path)
 

@@ -17,36 +17,9 @@ Usage:
 import logging
 from typing import Any, Callable, Optional, Dict
 from workflows.shared.state import BookingState
-from core.config import settings
+from utils.field_utils import get_nested_field, set_nested_field
 
 logger = logging.getLogger(__name__)
-
-
-def get_nested_field(state: BookingState, field_path: str) -> Any:
-    """Get nested field from state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
-
-    return current
-
-
-def set_nested_field(state: BookingState, field_path: str, value: Any) -> None:
-    """Set nested field in state using dot notation."""
-    parts = field_path.split(".")
-    current = state
-
-    for part in parts[:-1]:
-        if part not in current or current[part] is None:
-            current[part] = {}
-        current = current[part]
-
-    current[parts[-1]] = value
 
 
 def default_merge_strategy(
@@ -102,24 +75,8 @@ async def node(
         merge_fn: Optional custom merge function
         confidence_field: Field name for confidence in data (default: "confidence")
         turn: Optional turn number for tracking
-
-    Returns:
-        Updated state (only if new data is more confident)
-
-    Example:
-        # Extract name with confidence 0.9
-        name_data = {"first_name": "Hrijul", "last_name": "Dey"}
-        state = await merge.node(state, name_data, "customer", 0.9)
-
-        # Later, low-confidence extraction tries to overwrite
-        bad_data = {"first_name": "Shukriya"}  # Greeting misinterpreted
-        state = await merge.node(state, bad_data, "customer", 0.5)
-        # Result: Original "Hrijul" preserved! 0.5 < 0.9
-
-        # Same node, different data path!
-        vehicle_data = {"brand": "TATA", "model": "Punch"}
-        state = await merge.node(state, vehicle_data, "vehicle", 0.8)
     """
+
     # Get existing data
     existing_data = get_nested_field(state, data_path)
 
@@ -178,6 +135,5 @@ async def node(
             f"⏭️ Keeping {data_path}: existing confidence {existing_confidence:.2f} >= "
             f"new {new_confidence:.2f}"
         )
-        # No change to state
 
     return state

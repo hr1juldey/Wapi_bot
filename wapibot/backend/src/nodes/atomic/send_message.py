@@ -71,8 +71,6 @@ async def node(
 
         # Dynamic greeting
         await send_message.node(state, greeting_builder)
-
-        # All use SAME node - DRY!
     """
     # Build message text
     try:

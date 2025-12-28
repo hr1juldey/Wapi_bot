@@ -16,10 +16,11 @@ Usage:
 
 import asyncio
 import logging
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, Literal
 from workflows.shared.state import BookingState
 from core.config import settings
-from utils.field_utils import get_nested_field, set_nested_field
+from core.brain_config import get_brain_settings
+from utils.field_utils import set_nested_field
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ async def node(
     field_path: str,
     fallback_fn: Optional[Callable[[str], dict]] = None,
     timeout: Optional[float] = None,
-    metadata_path: Optional[str] = None
+    metadata_path: Optional[str] = None,
+    extraction_priority: Optional[Literal["regex_first", "dspy_first"]] = None
 ) -> BookingState:
     """Atomic extraction node - works with ANY extractor, ANY field.
 
@@ -61,6 +63,8 @@ async def node(
         fallback_fn: Optional fallback function (e.g., regex extractor)
         timeout: Extraction timeout (default: from config)
         metadata_path: Optional path to store extraction metadata
+        extraction_priority: Order to try methods ("regex_first" or "dspy_first")
+                           Defaults to brain_mode setting (reflex=regex, conscious=dspy)
 
     Returns:
         Updated state with extracted data
@@ -81,121 +85,93 @@ async def node(
             "customer.first_name",
             fallback_fn=regex_name_fallback
         )
+
+        # Brain-controlled priority
+        state = await extract.node(
+            state,
+            extractor,
+            "customer.first_name",
+            fallback_fn=regex_fallback,
+            extraction_priority="regex_first"  # Brain sets this based on mode
+        )
     """
     extraction_timeout = timeout if timeout is not None else settings.extraction_timeout_normal
 
-    # Tier 1: Try DSPy extraction
-    try:
-        logger.info(f"🔍 Extracting {field_path} using {extractor.__class__.__name__}")
+    # Determine extraction priority (brain-controlled configuration)
+    if extraction_priority is None:
+        brain_settings = get_brain_settings()
+        extraction_priority = "regex_first" if brain_settings.brain_mode == "reflex" else "dspy_first"
 
-        # Run extractor in thread pool (DSPy is sync)
-        loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                lambda: extractor(
-                    conversation_history=state.get("history", []),
-                    user_message=state["user_message"]
+    # Determine method order based on priority
+    method_order = ["regex", "dspy"] if extraction_priority == "regex_first" else ["dspy", "regex"]
+
+    field_name = field_path.split(".")[-1]
+
+    # Try methods in priority order
+    for method_name in method_order:
+        try:
+            # Skip regex if no fallback function provided
+            if method_name == "regex" and not fallback_fn:
+                continue
+
+            if method_name == "dspy":
+                logger.info(f"🔍 Extracting {field_path} using {extractor.__class__.__name__}")
+
+                # Run extractor in thread pool (DSPy is sync)
+                loop = asyncio.get_event_loop()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: extractor(
+                            conversation_history=state.get("history", []),
+                            user_message=state["user_message"]
+                        )
+                    ),
+                    timeout=extraction_timeout
                 )
-            ),
-            timeout=extraction_timeout
-        )
 
-        # Extract the value - handle both dict and object responses
-        if isinstance(result, dict):
-            # DSPy returns dict: {"first_name": "Hrijul", "confidence": 0.9}
-            # We need to know which field to extract
-            field_name = field_path.split(".")[-1]
-            value = result.get(field_name) or result.get("value")
-            confidence = result.get("confidence", 1.0)
-        else:
-            # DSPy Prediction object: result.first_name, result.confidence
-            field_name = field_path.split(".")[-1]
-            value = getattr(result, field_name, None) or getattr(result, "value", None)
-            confidence = getattr(result, "confidence", 1.0)
+                # Extract value - handle both dict and object responses
+                if isinstance(result, dict):
+                    value = result.get(field_name) or result.get("value")
+                    confidence = result.get("confidence", 1.0)
+                else:
+                    value = getattr(result, field_name, None) or getattr(result, "value", None)
+                    confidence = getattr(result, "confidence", 1.0)
 
-        # Set the extracted value
-        if value is not None:
+            else:  # method_name == "regex"
+                logger.info(f"🔄 Trying regex fallback for {field_path}")
+                result = fallback_fn(state["user_message"])
+
+                if not result:
+                    raise ValueError("Fallback returned no result")
+
+                value = result.get(field_name) or result.get("value")
+                confidence = result.get("confidence", settings.confidence_medium)
+
+            # Store extracted value if found
+            if value is None:
+                raise ValueError(f"No value extracted from {method_name}")
+
             set_nested_field(state, field_path, value)
 
             # Store metadata if requested
             if metadata_path:
                 set_nested_field(state, metadata_path, {
-                    "extraction_method": "dspy",
-                    "extractor": extractor.__class__.__name__,
+                    "extraction_method": method_name,
+                    "extractor": extractor.__class__.__name__ if method_name == "dspy" else "regex",
                     "confidence": confidence
                 })
 
-            logger.info(f"✅ Extracted {field_path} = {value} (confidence: {confidence})")
+            logger.info(f"✅ Extracted {field_path} = {value} via {method_name} (confidence: {confidence})")
             return state
-        else:
-            raise ValueError(f"Extractor returned no value for {field_path}")
 
-    except (TimeoutError, ConnectionError) as e:
-        logger.warning(f"Tier 1 (DSPy) timeout for {field_path}: {e}")
+        except Exception as e:
+            logger.warning(f"{method_name} extraction failed for {field_path}: {e}")
+            continue  # Try next method
 
-        # Tier 2: Try fallback if provided
-        if fallback_fn:
-            try:
-                logger.info(f"🔄 Trying fallback for {field_path}")
-                fallback_result = fallback_fn(state["user_message"])
-
-                if fallback_result:
-                    # Fallback returns dict with value and possibly other fields
-                    field_name = field_path.split(".")[-1]
-                    value = fallback_result.get(field_name) or fallback_result.get("value")
-
-                    if value is not None:
-                        set_nested_field(state, field_path, value)
-
-                        if metadata_path:
-                            set_nested_field(state, metadata_path, {
-                                "extraction_method": "fallback",
-                                "confidence": fallback_result.get("confidence", settings.confidence_medium)
-                            })
-
-                        logger.info(f"✅ Fallback extracted {field_path} = {value}")
-                        return state
-
-                raise ValueError("Fallback returned no value")
-
-            except Exception as fallback_error:
-                logger.warning(f"Tier 2 (Fallback) failed for {field_path}: {fallback_error}")
-
-        # Both tiers failed - log error in state
-        if "errors" not in state:
-            state["errors"] = []
-        state["errors"].append(f"extraction_failed_{field_path}")
-        logger.error(f"❌ All extraction tiers failed for {field_path}")
-        return state
-
-    except Exception as e:
-        logger.error(f"DSPy extraction failed for {field_path}: {e}")
-
-        # Try fallback
-        if fallback_fn:
-            try:
-                fallback_result = fallback_fn(state["user_message"])
-                field_name = field_path.split(".")[-1]
-                value = fallback_result.get(field_name) or fallback_result.get("value")
-
-                if value is not None:
-                    set_nested_field(state, field_path, value)
-
-                    if metadata_path:
-                        set_nested_field(state, metadata_path, {
-                            "extraction_method": "fallback",
-                            "confidence": fallback_result.get("confidence", settings.confidence_medium)
-                        })
-
-                    logger.info(f"✅ Fallback extracted {field_path} = {value}")
-                    return state
-
-            except Exception as fallback_error:
-                logger.warning(f"Fallback failed for {field_path}: {fallback_error}")
-
-        # All failed
-        if "errors" not in state:
-            state["errors"] = []
-        state["errors"].append(f"extraction_failed_{field_path}")
-        return state
+    # All methods failed
+    if "errors" not in state:
+        state["errors"] = []
+    state["errors"].append(f"extraction_failed_{field_path}")
+    logger.error(f"❌ All extraction methods failed for {field_path}")
+    return state
