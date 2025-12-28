@@ -103,7 +103,10 @@ class BookingState(TypedDict):
     confirmed: Optional[bool]  # True=confirmed, False=cancelled, None=unclear
 
     # Booking Result
+    booking_api_response: Optional[Dict[str, Any]]  # Raw API response from create_booking_by_phone
     booking_response: Optional[Dict[str, Any]]  # Response from booking creation API
+    booking_id: Optional[str]  # Booking ID from created booking (e.g., "LIT-BK-HD-OT-291225-0025")
+    booking_data: Optional[Dict[str, Any]]  # Full booking data from API response
     service_request_id: Optional[str]  # Created when booking confirmed
     service_request: Optional[Dict[str, Any]]  # Full service request details
 

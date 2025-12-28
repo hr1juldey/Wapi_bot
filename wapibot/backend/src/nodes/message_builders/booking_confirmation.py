@@ -84,6 +84,21 @@ class BookingConfirmationBuilder:
                 addon_price = addon.get("unit_price", 0)
                 message += f"• {addon_name} - ₹{addon_price}\n"
 
+        # Surcharge details (electricity/water)
+        price_breakdown = state.get("price_breakdown", {})
+        if isinstance(price_breakdown, dict):
+            # Extract surcharges from API response (nested in 'message' key)
+            breakdown = price_breakdown.get("message", price_breakdown)
+            electricity_surcharge = breakdown.get("electricity_surcharge", 0)
+            water_surcharge = breakdown.get("water_surcharge", 0)
+
+            if electricity_surcharge > 0 or water_surcharge > 0:
+                message += "\n*Surcharges:*\n"
+                if electricity_surcharge > 0:
+                    message += f"• Electricity ⚡ - ₹{electricity_surcharge}\n"
+                if water_surcharge > 0:
+                    message += f"• Water 💧 - ₹{water_surcharge}\n"
+
         # Appointment details
         date = appointment.get("date", "")
         time_slot = appointment.get("time_slot", "")

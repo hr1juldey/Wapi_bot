@@ -74,7 +74,7 @@ async def node(
         session = PaymentSession(
             session_id=session_id,
             conversation_id=state.get("conversation_id", "unknown"),
-            booking_id=state.get("booking_response", {}).get("booking_id"),
+            booking_id=state.get("booking_id"),  # Fixed: Get directly from state
             service_request_id=state.get("service_request_id"),
             amount=amount or 0.0,
             upi_string=upi_string,

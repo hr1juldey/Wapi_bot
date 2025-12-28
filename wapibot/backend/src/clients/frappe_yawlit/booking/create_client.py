@@ -146,27 +146,31 @@ class BookingCreateClient:
 
         Args:
             price_data: Price calculation parameters including:
-                - service_id: Service ID
-                - vehicle_type: Vehicle type
-                - optional_addons: List of addon IDs (optional)
-                - coupon_code: Discount coupon (optional)
+                - product_id: Service product ID (e.g., "suv-premium-one-time")
+                - electricity_provided: 1 if available, 0 if not (adds surcharge)
+                - water_provided: 1 if available, 0 if not (adds surcharge)
+                - addon_ids: List of addon objects (optional)
+                  Format: [{"addon": "Engine Bay Cleaning", "quantity": 1, "unit_price": 300.0}, ...]
 
         Returns:
             Price breakdown including:
                 - base_price: Service base price
-                - addon_price: Total addon cost
-                - discount: Applied discount amount
-                - tax: Tax amount
-                - total_price: Final amount to pay
+                - addons_total: Total addon cost
+                - water_surcharge: Water surcharge (if water_provided=0)
+                - electricity_surcharge: Electricity surcharge (if electricity_provided=0)
+                - total_surcharges: Combined surcharges
+                - total_amount: Final amount to pay
 
         Example:
             >>> price = await client.booking_create.calculate_price({
-            ...     "service_id": "SRV-2025-001",
-            ...     "vehicle_type": "Sedan",
-            ...     "optional_addons": ["ADDON-001"],
-            ...     "coupon_code": "FIRST20"
+            ...     "product_id": "suv-premium-one-time",
+            ...     "electricity_provided": 1,
+            ...     "water_provided": 1,
+            ...     "addon_ids": [
+            ...         {"addon": "Engine Bay Cleaning", "quantity": 1, "unit_price": 300.0}
+            ...     ]
             ... })
-            >>> print(f"Total: ₹{price['total_price']}")
+            >>> print(f"Total: ₹{price['message']['total_amount']}")
         """
         try:
             return await self.http.post(

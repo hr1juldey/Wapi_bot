@@ -41,15 +41,19 @@ async def calculate_price(state: BookingState) -> BookingState:
         def extract_price_params(s):
             # Wrap in price_data because calculate_price(price_data: Dict) expects it
             addon_ids = s.get("addon_ids", [])
+
+            # CRITICAL FIX: Use SAME format AND field names as create_booking_by_phone (which works!)
+            # Both APIs expect full addon objects: [{"addon": "name", "quantity": 1, "unit_price": 300}, ...]
             price_params = {
                 "price_data": {
                     "product_id": selected_service.get("name"),
-                    "optional_addons": addon_ids,
+                    "addon_ids": addon_ids,  # Changed from optional_addons to addon_ids
                     "electricity_provided": s.get("electricity_provided", 1),
                     "water_provided": s.get("water_provided", 1)
                 }
             }
-            logger.info(f"💰 Price params: product={selected_service.get('name')}, addons={addon_ids}, elec={s.get('electricity_provided', 1)}, water={s.get('water_provided', 1)}")
+            addon_names = [a.get("addon") for a in addon_ids] if addon_ids else []
+            logger.info(f"💰 Price params: product={selected_service.get('name')}, addons={addon_names}, elec={s.get('electricity_provided', 1)}, water={s.get('water_provided', 1)}")
             return price_params
 
         logger.info("💰 Calling calculate_booking_price API...")
@@ -207,21 +211,24 @@ async def create_booking(state: BookingState) -> BookingState:
     api_response = result.get("booking_api_response", {})
     message = api_response.get("message", {})
 
-    # Preserve state and merge in new booking data
-    state["booking_response"] = message
-    state["booking_id"] = message.get("booking_id", "Unknown")
-    state["booking_data"] = message.get("booking_data", {})
+    # CRITICAL FIX: Update RESULT state (returned by call_frappe_node), not original state
+    result["booking_response"] = message
+    result["booking_id"] = message.get("booking_id", "Unknown")
+    result["booking_data"] = message.get("booking_data", {})
 
-    logger.info(f"✅ Booking created: {state.get('booking_id')}")
-    logger.info(f"📋 Booking ID in state: {state.get('booking_id')}")
-    logger.info(f"📋 State keys: {list(state.keys())}")
-    return state
+    logger.info(f"✅ Booking created: {result.get('booking_id')}")
+    logger.info(f"📋 Booking ID in state: {result.get('booking_id')}")
+    logger.info(f"📋 State keys: {list(result.keys())}")
+    return result  # Return the updated result state
 
 
 async def generate_payment_qr(state: BookingState) -> BookingState:
     """Generate UPI QR code for payment."""
     amount = state.get("total_price")
     booking_id = state.get("booking_id", "Unknown")
+    logger.info(f"🔍 DEBUG: State has booking_id key: {'booking_id' in state}")
+    logger.info(f"🔍 DEBUG: booking_id value: {repr(state.get('booking_id'))}")
+    logger.info(f"🔍 DEBUG: booking_response value: {repr(state.get('booking_response'))}")
     logger.info(f"🔍 Generating QR for booking: {booking_id}")
 
     return await generate_qr_node(
