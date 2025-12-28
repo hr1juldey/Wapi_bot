@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### CRITICAL: File Size Limits (STRICTLY ENFORCED)
 
 **Maximum 100 lines per Python file, with 50-line overhead allowed for:**
+
 - Imports (max 20 lines)
 - Module docstring (max 15 lines)
 - Type definitions/Protocols (max 15 lines)
@@ -18,12 +19,14 @@ Files currently exceeding limits are TECHNICAL DEBT and must be refactored befor
 ### DRY Principle (Don't Repeat Yourself)
 
 **ONE implementation per concern:**
+
 - ✅ ONE `extract.py` node works with ANY extractor (DSPy, regex, API)
 - ✅ ONE `validate.py` node works with ANY Pydantic model
 - ✅ ONE `call_api.py` node works with ANY HTTP API
 - ❌ NO `extract_name.py`, `extract_vehicle.py`, `extract_date.py` - use configuration instead
 
 **Configuration over duplication:**
+
 ```python
 # WRONG: Multiple files doing the same thing
 nodes/extraction/extract_name.py (150 lines)
@@ -47,6 +50,7 @@ dspy_modules/extractors/date_extractor.py (40 lines)
    - `send_message.py` - ONLY sends messages (doesn't extract or route)
 
 2. **Open/Closed**: Extend via Protocols, not modification
+
    ```python
    class Extractor(Protocol):
        def __call__(self, history: list, message: str) -> dict: ...
@@ -56,6 +60,7 @@ dspy_modules/extractors/date_extractor.py (40 lines)
    ```
 
 3. **Liskov Substitution**: Any Protocol implementation must be swappable
+
    ```python
    # These MUST be interchangeable in extract.node():
    extract.node(state, NameExtractorDSPy(), "customer.first_name")
@@ -69,6 +74,88 @@ dspy_modules/extractors/date_extractor.py (40 lines)
 
 5. **Dependency Inversion**: Depend on Protocols, not concrete classes
    - Nodes accept Protocol types, not `NameExtractor` or `VehicleExtractor`
+
+### Blender Everything Nodes Architecture (PRIMARY REFERENCE)
+
+**Based on [Blender Geometry Nodes Design (T74967)](https://developer.blender.org/T74967) and [Everything Nodes Architecture](https://devtalk.blender.org/t/blenders-architecture-concerning-everything-nodes/9888)**
+
+This is the CANONICAL design pattern for WapiBot node architecture.
+
+#### 1. Atomic Nodes - Simple, Focused
+
+> "Nodes need to become more atomic, generally simpler" - allowing users to plug in whatever they need
+
+**Applied to WapiBot:**
+
+- `extract.py` is atomic - does ONLY extraction
+- `validate.py` is atomic - does ONLY validation
+- `send_message.py` is atomic - does ONLY sending
+- ❌ **NO Protocol files needed** - just simple, focused nodes
+- ❌ **NO `/backend/src/protocols/` directory** - Protocol definitions stay inline in atomic node files
+
+#### 2. Composability is King
+
+> "Creating a group from a single node should have the same behavior as the original node"
+
+**Applied to WapiBot:**
+
+```python
+# Node groups are WIRING, not logic
+slot_preference_group.py:
+    extract.node() → validate.node() → send_message.node()
+```
+
+- ✅ Compose atomic nodes in node groups
+- ❌ NO separate Protocol abstraction layers
+- ❌ NO domain-specific wrapper nodes (like `extract_name.py` that just wraps `extract.node()`)
+
+#### 3. Encapsulation - Dependencies from Outside
+
+> "Geometry nodes systems should be fully encapsulatable, with all dependencies coming from 'outside'"
+
+**Applied to WapiBot:**
+
+```python
+# GOOD - dependency injected from outside
+await extract.node(state, NameExtractor(), "customer.first_name")
+
+# BAD - hidden dependency
+await extract_name.node(state)  # Where does NameExtractor come from?
+```
+
+#### 4. Pass-Through Architecture
+
+> "The node will transform only the bits it's concerned with and everything else will be passed through"
+
+**Applied to WapiBot:**
+
+```python
+# extract.py only touches extraction field, passes rest of state through
+state = await extract.node(state, extractor, "customer.name")
+# state still has: history, conversation_id, vehicle, etc. - all passed through
+```
+
+#### 5. Generic Inputs > Built-in Properties
+
+> "Properties that were built into modifiers should become generic inputs instead"
+
+**Applied to WapiBot:**
+
+```python
+# BAD - built-in property
+class ExtractNameNode:
+    extractor = NameExtractor()  # Hardcoded!
+
+# GOOD - generic input
+await extract.node(state, any_extractor, any_field_path)
+```
+
+**References:**
+
+- [Geometry Nodes Design (T74967)](https://developer.blender.org/T74967)
+- [Everything Nodes Architecture Discussion](https://devtalk.blender.org/t/blenders-architecture-concerning-everything-nodes/9888)
+- [Node Interface Framework](https://developer.blender.org/docs/features/nodes/proposals/node_interface_framework/)
+- [Geometry Nodes Workshop Sept 2025](https://code.blender.org/2025/10/geometry-nodes-workshop-september-2025/)
 
 ## Atomic Node Architecture
 
@@ -117,6 +204,7 @@ async def node(
 ### Workflow Composition (NOT Code-Level Noding)
 
 **WRONG** - Code-level nodes (visual programming hell):
+
 ```python
 [Get Message] → [Create Signature] → [Configure Fields] → [Instantiate Module]
 → [Call Module] → [Parse Result] → [Check None] → [Create Fallback] → [Regex Match]
@@ -125,6 +213,7 @@ async def node(
 ```
 
 **RIGHT** - Workflow-level nodes (business logic abstraction):
+
 ```python
 [Extract Name] → [Validate Name] → [Check Confidence] → [Generate Response]
 # 4 nodes representing 4 business steps
@@ -133,9 +222,10 @@ async def node(
 
 ### Sub-Workflows for Complex Steps
 
-**NEVER create `schedule_appointment.py` as a single large node.**
+#### **NEVER create `schedule_appointment.py` as a single large node.**
 
-**DO create a sub-workflow** composed from atomic nodes:
+#### **DO create a sub-workflow**: composed from atomic nodes as nodegroups in [node_groups](backend/src/workflows/node_groups/) folder
+
 ```python
 def create_schedule_appointment_workflow():
     """Sub-workflow: reusable across marketing AND direct booking."""
@@ -158,42 +248,50 @@ def create_schedule_appointment_workflow():
 ## Development Commands
 
 ### Start Backend
+
 ```bash
 cd backend
 uvicorn src.main:app --reload --port 8000
 ```
 
 ### Run All Tests
+
 ```bash
 pytest src/tests/
 ```
 
 ### Run Single Test File
+
 ```bash
 pytest src/tests/unit/test_extract_node.py -v
 ```
 
 ### Run Single Test Function
+
 ```bash
 pytest src/tests/unit/test_extract_node.py::test_extract_with_dspy_success -v
 ```
 
 ### Type Checking (REQUIRED before commit)
+
 ```bash
 python -m ruff check src/
 ```
 
 ### Code Quality Check
+
 ```bash
 python -m pyrefly check src/
 ```
 
 ### Run Frontend Integration Tests
+
 ```bash
 pytest src/tests/test_frontend/ -v
 ```
 
 ### Launch LangGraph Studio (Visual Workflow Editor)
+
 ```bash
 langgraph-studio
 ```
@@ -227,6 +325,7 @@ class BookingState(TypedDict):
 ```
 
 **Nested field access** uses dot notation:
+
 ```python
 # Get nested fields
 get_nested_field(state, "customer.first_name")
@@ -240,36 +339,42 @@ set_nested_field(state, "appointment.date", "2025-12-25")
 ## Layer Responsibilities
 
 ### API Layer (`src/api/v1/`)
+
 - HTTP request/response only
 - Pydantic schema validation
 - Delegate to service layer
 - NO business logic
 
 ### Service Layer (`src/services/`)
+
 - Workflow orchestration
 - External API coordination
 - Transaction management
 - NO node implementation
 
 ### Workflow Layer (`src/workflows/`)
+
 - LangGraph StateGraph definitions
 - Node composition
 - Routing logic
 - Automatic checkpointing
 
 ### Node Layer (`src/nodes/atomic/`)
+
 - Atomic operations (extract, validate, call_api, etc.)
 - Protocol-based design
 - Single responsibility
 - 100-line limit
 
 ### DSPy Layer (`src/dspy_modules/`, `src/dspy_signatures/`)
+
 - LLM module implementations
 - Signature definitions
 - Extractor/analyzer implementations
 - Used BY nodes, not calling nodes
 
 ### Fallback Layer (`src/fallbacks/`)
+
 - Regex-based fallbacks
 - Rule-based extraction
 - Used when DSPy fails
@@ -278,18 +383,21 @@ set_nested_field(state, "appointment.date", "2025-12-25")
 ## External Integrations
 
 ### WAPI (WhatsApp Business API)
+
 - Client: `src/clients/wapi/`
 - Base URL: `https://wapi.in.net`
 - Webhook endpoint: `POST /api/v1/wapi/webhook`
 - Message sending uses `call_api.node()` with WAPI request builder
 
 ### Frappe/Yawlit ERP
+
 - Client: `src/clients/frappe_yawlit/`
 - Base URL: Configured via environment
 - Modules: customer, booking, payment, subscription, vendor
 - All API calls use `call_api.node()` with appropriate request builders
 
 ### Frontend (Next.js)
+
 - Development server: `http://localhost:3000`
 - Backend API: `http://localhost:8000`
 - Chat endpoint: `POST /api/v1/chat`
@@ -298,18 +406,21 @@ set_nested_field(state, "appointment.date", "2025-12-25")
 ## Testing Strategy
 
 ### Unit Tests
+
 - Test atomic nodes in isolation
 - Mock external dependencies (APIs, LLMs)
 - Focus on edge cases
 - Location: `src/tests/unit/`
 
 ### Integration Tests
+
 - Test sub-workflows end-to-end
 - Use real state transformations
 - Mock only external APIs
 - Location: `src/tests/integration/`
 
 ### Workflow Tests
+
 - Test complete workflows
 - Use LangGraph test harness
 - Verify state transitions
@@ -318,43 +429,53 @@ set_nested_field(state, "appointment.date", "2025-12-25")
 ## Configuration Files
 
 ### `requirements.txt`
+
 Main dependencies - keep minimal, use specific versions for critical deps.
 
 ### `pyrefly.toml`
+
 Code quality settings - enforces file inclusion patterns.
 
 ### `src/core/config.py`
+
 Pydantic Settings for environment configuration.
 
 ## Common Pitfalls to Avoid
 
 ### 1. Creating Domain-Specific Nodes
+
 ❌ DON'T: Create `send_template_message.py`, `send_greeting.py`, `send_confirmation.py`
 ✅ DO: Use `send_message.node(state, template_builder)` with different builders
 
 ### 2. Violating Single Responsibility
+
 ❌ DON'T: Put validation logic inside extract nodes
 ✅ DO: Extract → Validate (two separate atomic nodes)
 
 ### 3. Hidden State
+
 ❌ DON'T: Store data in class attributes or globals
 ✅ DO: Everything in BookingState
 
 ### 4. Code-Level Noding
+
 ❌ DON'T: Create nodes for every Python operation
 ✅ DO: Create workflow-level nodes for business steps
 
 ### 5. Exceeding File Size Limits
+
 ❌ DON'T: Write 200+ line files
 ✅ DO: Refactor into sub-modules when approaching 100 lines
 
 ### 6. Duplicating Logic
+
 ❌ DON'T: Copy-paste retry logic into every API call
 ✅ DO: Implement retry ONCE in `call_api.node()`
 
 ## Migration from V1
 
 If you encounter V1 code (monolithic nodes > 500 lines):
+
 1. DO NOT modify in place
 2. Create atomic nodes following the Protocol pattern
 3. Compose atomic nodes into sub-workflows
@@ -373,6 +494,7 @@ See `docs/ATOMIC_NODES_REDESIGN_PLAN.md` for detailed migration strategy.
 ## Success Metrics
 
 A node is well-designed if:
+
 - ✅ ≤100 lines (excluding 50-line overhead)
 - ✅ Single responsibility (does ONE thing)
 - ✅ Protocol-based (accepts ANY implementation)
@@ -381,6 +503,7 @@ A node is well-designed if:
 - ✅ Composable (works with other atomic nodes)
 
 A workflow is well-designed if:
+
 - ✅ 3-7 nodes (not 20+)
 - ✅ Each node represents a business step
 - ✅ Clear dataflow (state in → state out)
