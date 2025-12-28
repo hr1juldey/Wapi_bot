@@ -1,7 +1,7 @@
 """Utilities collection node group.
 
 Handles:
-- Asking about electricity and water availability
+- Asking about electricity and water availability (via message builder)
 - Extracting yes/no responses for both utilities
 - Validating that both fields are set
 """
@@ -10,33 +10,14 @@ import logging
 from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
+from nodes.message_builders.utilities_selection import UtilitiesSelectionBuilder
 
 logger = logging.getLogger(__name__)
 
 
 async def ask_utilities(state: BookingState) -> BookingState:
-    """Send message asking about electricity and water availability."""
-
-    def build_utilities_message(s):
-        customer_name = s.get("customer", {}).get("first_name", "there")
-
-        return f"""Hi {customer_name}! 👋
-
-To complete your booking, we need to know about utilities at your service location:
-
-1. *Electricity* ⚡ - Do you have electricity available?
-2. *Water* 💧 - Do you have a water connection?
-
-Please reply with:
-• *"Yes Yes"* - if both are available
-• *"Yes No"* - if only electricity is available
-• *"No Yes"* - if only water is available
-• *"No No"* - if neither is available
-
-Example: "Yes Yes"
-"""
-
-    result = await send_message_node(state, build_utilities_message)
+    """Send utilities question using message builder."""
+    result = await send_message_node(state, UtilitiesSelectionBuilder())
 
     # Pause and wait for user's response
     result["should_proceed"] = False

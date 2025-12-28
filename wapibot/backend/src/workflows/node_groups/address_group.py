@@ -3,7 +3,7 @@
 Handles:
 - Checking if customer has multiple addresses
 - Auto-selecting if only one address
-- Showing address options if multiple
+- Showing address options if multiple (via message builder)
 - Extracting and validating user's address selection
 """
 
@@ -11,6 +11,7 @@ import logging
 from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
+from nodes.message_builders.address_selection import AddressSelectionBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -36,41 +37,8 @@ async def check_address_count(state: BookingState) -> BookingState:
 
 
 async def show_address_options(state: BookingState) -> BookingState:
-    """Show address options for user to choose from."""
-
-    def build_address_message(s):
-        addresses = s.get("addresses", [])
-        customer_name = s.get("customer", {}).get("first_name", "there")
-
-        # Build address list
-        address_list = []
-        for idx, addr in enumerate(addresses, 1):
-            line1 = addr.get("address_line1", "")
-            line2 = addr.get("address_line2", "")
-            city = addr.get("city", "")
-            pincode = addr.get("pincode", "")
-
-            # Format address nicely
-            full_addr = line1
-            if line2:
-                full_addr += f", {line2}"
-            full_addr += f"\n   {city} - {pincode}"
-
-            address_list.append(f"{idx}. {full_addr}")
-
-        addresses_text = "\n\n".join(address_list)
-
-        return f"""Hi {customer_name}! 👋
-
-Where would you like us to service your vehicle?
-
-Your saved addresses:
-
-{addresses_text}
-
-Please reply with the number of your preferred location (e.g., "1" or "2")."""
-
-    result = await send_message_node(state, build_address_message)
+    """Show address options using message builder."""
+    result = await send_message_node(state, AddressSelectionBuilder())
 
     # Pause and wait for user's selection
     result["should_proceed"] = False

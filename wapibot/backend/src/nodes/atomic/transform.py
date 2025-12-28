@@ -8,12 +8,17 @@ SOLID Principles:
 DRY Principle:
 - ONE implementation for ALL transformations (filter, format, calculate)
 - Uses centralized field_utils (no duplication)
+
+Brain Integration:
+- Observes transformation patterns for learning
+- Brain can optimize transformation strategies in conscious mode
 """
 
 import logging
 from typing import Any, Protocol
 from workflows.shared.state import BookingState
 from utils.field_utils import get_nested_field, set_nested_field
+from core.brain_config import get_brain_settings
 
 logger = logging.getLogger(__name__)
 
@@ -91,16 +96,33 @@ async def node(
 
     # Transform data
     try:
+        # Brain observation: track transformation patterns
+        brain_settings = get_brain_settings()
+        if brain_settings.brain_enabled:
+            logger.debug(f"🧠 Brain observing transformation: {source_path}→{target_path} (mode: {brain_settings.brain_mode})")
+            # TODO: In Phase 4, brain will learn which transformations are most effective
+            # e.g., "FilterSlots with morning preference → 80% booking success rate"
+
         transformed_data = transformer(source_data, state)
         logger.info(f"🔄 Transformed {source_path} → {target_path}")
 
         # Store result using field_utils (DRY)
         set_nested_field(state, target_path, transformed_data)
 
+        # Brain feedback: successful transformation
+        if brain_settings.brain_enabled:
+            logger.debug(f"🧠 Transformation successful: {transformer.__class__.__name__}")
+
         return state
 
     except Exception as e:
         logger.error(f"❌ Transformation failed for {target_path}: {e}")
+
+        # Brain observation: track transformation failures for learning
+        brain_settings = get_brain_settings()
+        if brain_settings.brain_enabled:
+            logger.debug(f"🧠 Brain observing transformation failure: {source_path}→{target_path}")
+            # TODO: Brain can suggest alternative transformation strategies
 
         # Log error in state
         if "errors" not in state:

@@ -2,7 +2,7 @@
 
 Handles:
 - Asking when customer wants to book (open-ended)
-- Hybrid regex + DSPy extraction (regex first for cost optimization)
+- Hybrid regex + DSPy extraction (via domain node)
 - Incremental preference collection (ask for missing info)
 - MCQ fallbacks for structured input
 
@@ -13,12 +13,10 @@ import logging
 from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
+from nodes.extraction import extract_slot_preference
 from nodes.message_builders.date_preference_prompt import DatePreferencePromptBuilder
 from nodes.message_builders.time_preference_menu import TimePreferenceMenuBuilder
 from nodes.message_builders.date_preference_menu import DatePreferenceMenuBuilder
-from fallbacks.pattern_extractors import extract_time_range, extract_date
-from fallbacks.enhanced_date_fallback import extract_enhanced_date
-from models.extraction_patterns import TIME_RANGE_PATTERNS, DATE_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -50,48 +48,14 @@ async def ask_preference(state: BookingState) -> BookingState:
 
 
 async def extract_preference(state: BookingState) -> BookingState:
-    """Extract date/time preference - hybrid regex+enhanced+DSPy (regex first for cost)."""
-    message = state.get("user_message", "")
+    """Extract date/time preference using domain extraction node.
 
-    # Try time range extraction first
-    time_result = extract_time_range(message, TIME_RANGE_PATTERNS)
-
-    # Try basic date patterns
-    date_result = extract_date(message, DATE_PATTERNS)
-
-    # Try enhanced date extraction (ordinal, relative dates)
-    if not date_result:
-        enhanced_result = extract_enhanced_date(message)
-        if enhanced_result:
-            date_result = enhanced_result
-            # Check if confirmation needed
-            if enhanced_result.get("needs_confirmation"):
-                state["date_confirmation_prompt"] = enhanced_result.get("confirmation_prompt")
-                state["needs_date_confirmation"] = True
-
-    if time_result or date_result:
-        logger.info("✅ Regex/Enhanced extraction successful")
-        state["slot_preference_extraction_method"] = "regex"
-        if time_result:
-            state["preferred_time_range"] = time_result.get("preferred_time_range")
-        if date_result:
-            state["preferred_date"] = date_result.get("preferred_date")
-        return state
-
-    # Fall back to DSPy for complex inputs
-    logger.info("⚠️ Regex failed, using DSPy")
-    from dspy_modules.extractors.slot_preference_extractor import SlotPreferenceExtractor
-
-    extractor = SlotPreferenceExtractor()
-    dspy_result = extractor(
-        conversation_history=state.get("history", []),
-        user_message=message
-    )
-
-    state["slot_preference_extraction_method"] = "dspy"
-    state["preferred_date"] = dspy_result.get("preferred_date", "")
-    state["preferred_time_range"] = dspy_result.get("preferred_time_range", "")
-    return state
+    Delegates to extract_slot_preference.node() which handles:
+    - Regex extraction (time + date patterns)
+    - Enhanced date extraction (ordinal, relative dates)
+    - DSPy fallback for complex inputs
+    """
+    return await extract_slot_preference.node(state)
 
 
 def route_after_extraction(state: BookingState) -> str:

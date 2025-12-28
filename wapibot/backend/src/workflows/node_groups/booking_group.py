@@ -3,7 +3,7 @@
 Handles:
 - Price calculation
 - Showing booking summary
-- Processing confirmation
+- Processing confirmation (via domain node)
 - Creating booking
 - Success/error messages
 
@@ -21,6 +21,7 @@ from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.send_media import node as send_media_node
 from nodes.atomic.call_frappe import node as call_frappe_node
+from nodes.extraction import extract_confirmation
 from nodes.message_builders.booking_confirmation import BookingConfirmationBuilder
 from nodes.message_builders.payment_instructions import build_payment_instructions_caption
 from nodes.payments import generate_qr_node, schedule_reminders_node
@@ -105,18 +106,13 @@ async def send_confirmation(state: BookingState) -> BookingState:
 
 
 async def extract_confirmation(state: BookingState) -> BookingState:
-    """Extract YES/NO confirmation from user message."""
-    user_message = state.get("user_message", "").lower()
+    """Extract YES/NO confirmation using domain extraction node."""
+    # Use domain node for better regex patterns and LLM fallback
+    from nodes.extraction import extract_confirmation as extract_confirmation_node
+    result = await extract_confirmation_node.node(state, field_path="confirmed")
 
-    if "yes" in user_message or "confirm" in user_message or "ok" in user_message:
-        state["confirmed"] = True
-    elif "no" in user_message or "cancel" in user_message:
-        state["confirmed"] = False
-    else:
-        state["confirmed"] = None  # Unclear
-
-    logger.info(f"🔍 Confirmation extracted: {state.get('confirmed')}")
-    return state
+    logger.info(f"🔍 Confirmation extracted: {result.get('confirmed')}")
+    return result
 
 
 async def route_confirmation(state: BookingState) -> str:

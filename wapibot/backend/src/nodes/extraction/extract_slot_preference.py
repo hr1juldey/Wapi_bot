@@ -1,73 +1,94 @@
 """Domain node: Slot preference extraction.
 
-Composes atomic extract.node() with SlotPreferenceExtractor.
+Extracts date and time preferences using hybrid regex + DSPy approach.
 Follows Blender principle: composition over creation.
 """
 
 import logging
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Optional
 from workflows.shared.state import BookingState
-from nodes.atomic import extract
 from dspy_modules.extractors.slot_preference_extractor import SlotPreferenceExtractor
-from fallbacks.time_range_fallback import RegexTimeRangeExtractor
-from fallbacks.date_fallback import RegexDateExtractor
+from fallbacks.pattern_extractors import extract_time_range, extract_date
+from fallbacks.enhanced_date_fallback import extract_enhanced_date
+from models.extraction_patterns import TIME_RANGE_PATTERNS, DATE_PATTERNS
+from core.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-def regex_fallback(message: str) -> Dict[str, Any]:
-    """Regex fallback for slot preference extraction.
-
-    Args:
-        message: User message
-
-    Returns:
-        Dict with preferred_time and/or preferred_date
-    """
-    result = {}
-
-    # Try extracting time range
-    time_extractor = RegexTimeRangeExtractor()
-    time_range = time_extractor.extract(message)
-    if time_range:
-        result["preferred_time"] = time_range
-        logger.debug(f"Regex extracted time: {time_range}")
-
-    # Try extracting date
-    date_extractor = RegexDateExtractor()
-    date = date_extractor.extract(message)
-    if date:
-        result["preferred_date"] = date
-        logger.debug(f"Regex extracted date: {date}")
-
-    if result:
-        return result
-
-    raise ValueError("No slot preference found")
 
 
 async def node(
     state: BookingState,
     timeout: Optional[float] = None
 ) -> BookingState:
-    """Extract slot preference (time + date) from user message.
+    """Extract slot preference (time + date) using hybrid regex + DSPy.
 
-    Uses atomic extract.node() with SlotPreferenceExtractor.
+    Extraction strategy (regex-first for cost optimization):
+    1. Try regex for time range
+    2. Try regex for date (basic + enhanced patterns)
+    3. Fall back to DSPy for complex inputs
 
     Args:
         state: Current booking state
         timeout: Optional extraction timeout
 
     Returns:
-        Updated state with slot_preference
+        Updated state with preferred_date, preferred_time_range
     """
-    extractor = SlotPreferenceExtractor()
+    message = state.get("user_message", "")
+    extraction_timeout = timeout if timeout is not None else settings.extraction_timeout_normal
 
-    return await extract.node(
-        state,
-        extractor,
-        field_path="slot_preference",
-        fallback_fn=regex_fallback,
-        timeout=timeout,
-        metadata_path="extraction.slot_preference_meta"
-    )
+    # Regex extraction (fast, cheap)
+    time_result = extract_time_range(message, TIME_RANGE_PATTERNS)
+    date_result = extract_date(message, DATE_PATTERNS)
+
+    # Enhanced date extraction (ordinal, relative dates)
+    if not date_result:
+        enhanced_result = extract_enhanced_date(message)
+        if enhanced_result:
+            date_result = enhanced_result
+            if enhanced_result.get("needs_confirmation"):
+                state["date_confirmation_prompt"] = enhanced_result.get("confirmation_prompt")
+                state["needs_date_confirmation"] = True
+
+    # If regex succeeded for at least one field
+    if time_result or date_result:
+        logger.info("✅ Regex extraction successful for slot preference")
+        state["slot_preference_extraction_method"] = "regex"
+        if time_result:
+            state["preferred_time_range"] = time_result.get("preferred_time_range")
+        if date_result:
+            state["preferred_date"] = date_result.get("preferred_date")
+        return state
+
+    # Fallback to DSPy for complex inputs
+    logger.info("⚠️ Regex failed for slot preference, using DSPy")
+
+    try:
+        extractor = SlotPreferenceExtractor()
+        loop = asyncio.get_event_loop()
+
+        dspy_result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: extractor(
+                    conversation_history=state.get("history", []),
+                    user_message=message
+                )
+            ),
+            timeout=extraction_timeout
+        )
+
+        state["slot_preference_extraction_method"] = "dspy"
+        state["preferred_date"] = dspy_result.get("preferred_date", "")
+        state["preferred_time_range"] = dspy_result.get("preferred_time_range", "")
+        logger.info(f"✅ DSPy extracted slot preference: date={dspy_result.get('preferred_date')}, time={dspy_result.get('preferred_time_range')}")
+
+        return state
+
+    except Exception as e:
+        logger.error(f"❌ Slot preference extraction failed: {e}")
+        if "errors" not in state:
+            state["errors"] = []
+        state["errors"].append("extraction_failed_slot_preference")
+        return state

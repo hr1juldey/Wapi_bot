@@ -2,7 +2,7 @@
 
 Handles:
 - Fetching available addons for selected service
-- Showing addon options with prices
+- Showing addon options with prices (via message builder)
 - Extracting user's addon selection (supports multiple or skip)
 - Validating addon selection
 """
@@ -13,6 +13,7 @@ from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.call_frappe import node as call_frappe_node
+from nodes.message_builders.addon_selection import AddonSelectionBuilder
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -50,43 +51,8 @@ async def fetch_addons(state: BookingState) -> BookingState:
 
 
 async def show_addon_options(state: BookingState) -> BookingState:
-    """Show addon options with prices for user to choose from."""
-
-    def build_addon_message(s):
-        addons = s.get("available_addons", [])
-        service_name = s.get("selected_service", {}).get("product_name", "service")
-        customer_name = s.get("customer", {}).get("first_name", "there")
-
-        # Build addon list
-        addon_list = []
-        for idx, addon in enumerate(addons, 1):
-            addon_name = addon.get("addon_name", "")
-            price = addon.get("unit_price", 0)
-            description = addon.get("description", "")
-
-            addon_text = f"{idx}. *{addon_name}* - ₹{price}"
-            if description:
-                addon_text += f"\n   {description}"
-
-            addon_list.append(addon_text)
-
-        addons_text = "\n\n".join(addon_list)
-
-        return f"""Great choice, {customer_name}! 🎉
-
-Your selected service: *{service_name}*
-
-Would you like to add any extras?
-
-*Available Add-ons:*
-
-{addons_text}
-
-*To select:*
-• Reply with numbers (e.g., "1 3" for addons 1 and 3)
-• Reply "None" or "Skip" if you don't want any addons"""
-
-    result = await send_message_node(state, build_addon_message)
+    """Show addon options using message builder."""
+    result = await send_message_node(state, AddonSelectionBuilder())
 
     # Pause and wait for user's selection
     result["should_proceed"] = False
