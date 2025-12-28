@@ -116,6 +116,36 @@ curl -X POST https://yawlit.duckdns.org/api/method/yawlit_automotive_services.ap
 - Electricity Surcharge: ₹150
 - **Total: ₹899**
 
+### Scenario D: With addons (CRITICAL FIX - Dec 29, 2024)
+
+**⚠️ IMPORTANT**: API requires `addon_ids` with full objects, NOT `optional_addons` with string IDs!
+
+```bash
+curl -X POST https://yawlit.duckdns.org/api/method/yawlit_automotive_services.api.booking.calculate_booking_price \
+  -H "Content-Type: application/json" \
+  -H "Authorization: token 57ebe42fbfc0dd0:e4325914d099b80" \
+  -d '{"product_id": "suv-premium-one-time", "electricity_provided": 0, "water_provided": 1, "addon_ids": [{"addon": "Engine Bay Cleaning", "quantity": 1, "unit_price": 300.0}, {"addon": "Pressure Wash", "quantity": 1, "unit_price": 150.0}]}'
+```
+
+**Result:**
+
+- Base Price: ₹599
+- Addons Total: ₹450 (Engine Bay ₹300 + Pressure Wash ₹150)
+- Electricity Surcharge: ₹150
+- **Total: ₹1199** ✅
+
+**❌ WRONG FORMAT** (returns addons_total: 0):
+
+```json
+{"optional_addons": ["Engine Bay Cleaning", "Pressure Wash"]}
+```
+
+**✅ CORRECT FORMAT**:
+
+```json
+{"addon_ids": [{"addon": "Engine Bay Cleaning", "quantity": 1, "unit_price": 300.0}]}
+```
+
 ---
 
 ## Summary
@@ -123,8 +153,7 @@ curl -X POST https://yawlit.duckdns.org/api/method/yawlit_automotive_services.ap
 ✅ **All APIs Working with Frappe Token Authentication**
 
 | API | Status | Response Time |
-|-----|--------|---------------|
-
+| ----- | -------- | --------------- |
 | get_available_slots | ✅ Working | Fast |
 | get_filtered_services | ✅ Working | Fast |
 | get_optional_addons | ✅ Working | Fast |
