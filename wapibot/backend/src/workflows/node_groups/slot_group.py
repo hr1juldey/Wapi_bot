@@ -20,6 +20,8 @@ from nodes.transformers.format_slot_options import FormatSlotOptions
 from nodes.transformers.filter_slots_by_preference import FilterSlotsByPreference
 from nodes.transformers.group_slots_by_time import GroupSlotsByTime
 from nodes.message_builders.grouped_slots import GroupedSlotsBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -155,24 +157,20 @@ async def process_slot_selection(state: BookingState) -> BookingState:
 
 async def send_slot_error(state: BookingState) -> BookingState:
     """Send error message for invalid slot selection."""
-    error_msg = state.get("selection_error", "Invalid selection. Please try again.")
-    result = await send_message_node(state, lambda s: error_msg)
-    result["should_proceed"] = False  # Stop and wait for next user message
-    result["current_step"] = "awaiting_slot_selection"  # Resume here on next message
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_slot_selection"
+    )
 
 
-def route_slot_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    has_slots = bool(state.get("slot_options"))
-
-    if current_step == "awaiting_slot_selection" and has_slots:
-        logger.info("🔀 Resuming slot selection - skipping fetch")
-        return "process_selection"
-    else:
-        logger.info("🔀 Starting fresh slot fetch")
-        return "fetch_slots"
+# Create resume router for entry point
+route_slot_entry = create_resume_router(
+    awaiting_step="awaiting_slot_selection",
+    resume_node="process_selection",
+    fresh_node="fetch_slots",
+    readiness_check=lambda s: bool(s.get("slot_options")),
+    router_name="slot_entry"
+)
 
 
 def create_slot_group() -> StateGraph:

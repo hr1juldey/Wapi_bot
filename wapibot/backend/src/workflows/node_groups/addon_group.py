@@ -14,6 +14,8 @@ from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.call_frappe import node as call_frappe_node
 from nodes.message_builders.addon_selection import AddonSelectionBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -127,8 +129,7 @@ async def validate_addon_selection(state: BookingState) -> BookingState:
 
 async def send_invalid_addon_selection(state: BookingState) -> BookingState:
     """Send message for invalid addon selection."""
-
-    def invalid_message(s):
+    def error_builder(s):
         available_addons = s.get("available_addons", [])
         return f"""Please reply with valid numbers between 1 and {len(available_addons)}, or "Skip" if you don't want any addons.
 
@@ -137,10 +138,11 @@ Examples:
 • "1 3" - Select addons 1 and 3
 • "Skip" - No addons"""
 
-    result = await send_message_node(state, invalid_message)
-    result["should_proceed"] = False
-    result["current_step"] = "awaiting_addon_selection"
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_addon_selection",
+        error_message_builder=error_builder
+    )
 
 
 def route_addon_availability(state: BookingState) -> str:
@@ -160,17 +162,14 @@ def route_addon_validation(state: BookingState) -> str:
         return "invalid"
 
 
-def route_addon_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    addon_complete = state.get("addon_selection_complete", False)
-
-    if current_step == "awaiting_addon_selection" and not addon_complete:
-        logger.info("🔀 Resuming addon selection - extracting choice")
-        return "extract_selection"
-    else:
-        logger.info("🔀 Starting fresh addon selection")
-        return "fetch_addons"
+# Create resume router for entry point
+route_addon_entry = create_resume_router(
+    awaiting_step="awaiting_addon_selection",
+    resume_node="extract_selection",
+    fresh_node="fetch_addons",
+    readiness_check=lambda s: not s.get("addon_selection_complete", False),
+    router_name="addon_entry"
+)
 
 
 def create_addon_group() -> StateGraph:

@@ -12,6 +12,8 @@ from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.message_builders.address_selection import AddressSelectionBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 
 logger = logging.getLogger(__name__)
 
@@ -80,15 +82,15 @@ async def validate_address_selection(state: BookingState) -> BookingState:
 
 async def send_invalid_address_selection(state: BookingState) -> BookingState:
     """Send message for invalid address selection."""
-
-    def invalid_message(s):
+    def error_builder(s):
         addresses = s.get("addresses", [])
         return f"Please reply with a valid number between 1 and {len(addresses)}."
 
-    result = await send_message_node(state, invalid_message)
-    result["should_proceed"] = False
-    result["current_step"] = "awaiting_address_selection"
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_address_selection",
+        error_message_builder=error_builder
+    )
 
 
 def route_address_count(state: BookingState) -> str:
@@ -112,17 +114,14 @@ def route_address_validation(state: BookingState) -> str:
         return "invalid"
 
 
-def route_address_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    address_selected = state.get("address_selected", False)
-
-    if current_step == "awaiting_address_selection" and not address_selected:
-        logger.info("🔀 Resuming address selection - extracting choice")
-        return "extract_selection"
-    else:
-        logger.info("🔀 Starting fresh address selection")
-        return "check_count"
+# Create resume router for entry point
+route_address_entry = create_resume_router(
+    awaiting_step="awaiting_address_selection",
+    resume_node="extract_selection",
+    fresh_node="check_count",
+    readiness_check=lambda s: not s.get("address_selected", False),
+    router_name="address_entry"
+)
 
 
 def create_address_group() -> StateGraph:

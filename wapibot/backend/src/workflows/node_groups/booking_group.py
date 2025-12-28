@@ -21,10 +21,12 @@ from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.send_media import node as send_media_node
 from nodes.atomic.call_frappe import node as call_frappe_node
-from nodes.extraction import extract_confirmation
 from nodes.message_builders.booking_confirmation import BookingConfirmationBuilder
 from nodes.message_builders.payment_instructions import build_payment_instructions_caption
 from nodes.payments import generate_qr_node, schedule_reminders_node
+from nodes.routing.resume_router import create_resume_router
+from nodes.domain import calculate_booking_price
+from nodes.transformers.extract_booking_params import ExtractBookingParams
 from clients.frappe_yawlit import get_yawlit_client
 from core.config import settings
 
@@ -32,67 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 async def calculate_price(state: BookingState) -> BookingState:
-    """Calculate real price using Frappe API (handles addons, discounts, taxes)."""
-    selected_service = state.get("selected_service", {})
-    base_price = selected_service.get("base_price", 0)
-
-    try:
-        client = get_yawlit_client()
-
-        def extract_price_params(s):
-            # Wrap in price_data because calculate_price(price_data: Dict) expects it
-            addon_ids = s.get("addon_ids", [])
-
-            # CRITICAL FIX: Use SAME format AND field names as create_booking_by_phone (which works!)
-            # Both APIs expect full addon objects: [{"addon": "name", "quantity": 1, "unit_price": 300}, ...]
-            price_params = {
-                "price_data": {
-                    "product_id": selected_service.get("name"),
-                    "addon_ids": addon_ids,  # Changed from optional_addons to addon_ids
-                    "electricity_provided": s.get("electricity_provided", 1),
-                    "water_provided": s.get("water_provided", 1)
-                }
-            }
-            addon_names = [a.get("addon") for a in addon_ids] if addon_ids else []
-            logger.info(f"💰 Price params: product={selected_service.get('name')}, addons={addon_names}, elec={s.get('electricity_provided', 1)}, water={s.get('water_provided', 1)}")
-            return price_params
-
-        logger.info("💰 Calling calculate_booking_price API...")
-        result = await call_frappe_node(
-            state,
-            client.booking_create.calculate_price,
-            "price_breakdown",
-            state_extractor=extract_price_params
-        )
-
-        # Extract total_price from API response (unwrap message structure)
-        price_api_response = result.get("price_breakdown", {})
-        price_breakdown = price_api_response.get("message", {})
-        total_price = price_breakdown.get("total_amount")  # API uses total_amount, not total_price
-
-        if total_price and total_price > 0:
-            result["total_price"] = total_price
-            # Try both field names (addon_price and addons_total)
-            addon_amount = price_breakdown.get('addon_price', 0) or price_breakdown.get('addons_total', 0)
-            logger.info(f"💰 API price: ₹{total_price} (base: {price_breakdown.get('base_price', 0)}, addons: {addon_amount}, tax: {price_breakdown.get('tax', 0)})")
-            logger.info(f"💰 Full price breakdown: {price_breakdown}")
-            return result
-        else:
-            # API returned invalid price, use fallback
-            raise ValueError("Invalid price from API")
-
-    except Exception as e:
-        # Fallback to base price
-        logger.warning(f"Price calculation failed: {e}. Using base_price: ₹{base_price}")
-        state["total_price"] = base_price
-        state["price_breakdown"] = {
-            "base_price": base_price,
-            "addon_price": 0,
-            "discount": 0,
-            "tax": 0,
-            "total_price": base_price
-        }
-        return state
+    """Calculate real price using domain node."""
+    return await calculate_booking_price.node(state)
 
 
 async def send_confirmation(state: BookingState) -> BookingState:
@@ -127,95 +70,32 @@ async def route_confirmation(state: BookingState) -> str:
 
 
 async def create_booking(state: BookingState) -> BookingState:
-    """Create booking using phone-based API (no session required)."""
+    """Create booking using transformer for params extraction."""
     client = get_yawlit_client()
 
-    def extract_booking_params(s):
-        customer = s.get("customer", {})
-        selected_service = s.get("selected_service", {})
-        slot = s.get("slot", {})
-
-        # Extract and normalize phone from conversation_id
-        phone = s.get("conversation_id", "")
-        # Remove country code (91) if present
-        if phone.startswith("91") and len(phone) == 12:
-            phone = phone[2:]  # Extract last 10 digits
-        elif len(phone) == 10:
-            phone = phone  # Already in correct format
-        else:
-            logger.warning(f"Unexpected phone format: {phone}")
-            phone = phone[-10:]  # Fallback: take last 10 digits
-
-        logger.info(f"📱 Phone normalized: {s.get('conversation_id')} → {phone}")
-
-        # Extract booking data fields
-        product_id = selected_service.get("name")
-        booking_date = slot.get("date")
-        slot_id = slot.get("name")  # slot.name is the actual slot ID (e.g., "SLOT-1568")
-        vehicle_id = s.get("vehicle", {}).get("vehicle_id")
-        address_id = s.get("selected_address_id") or customer.get("default_address_id")
-
-        # Validate required fields
-        missing_fields = []
-        if not product_id:
-            missing_fields.append("product_id")
-        if not booking_date:
-            missing_fields.append("booking_date")
-        if not slot_id:
-            missing_fields.append("slot_id")
-        if not vehicle_id:
-            missing_fields.append("vehicle_id")
-        if not address_id:
-            missing_fields.append("address_id")
-
-        if missing_fields:
-            logger.error(f"❌ Missing required fields: {', '.join(missing_fields)}")
-            logger.error(f"   selected_service keys: {list(selected_service.keys())}")
-            logger.error(f"   slot keys: {list(slot.keys())}")
-            logger.error(f"   vehicle keys: {list(s.get('vehicle', {}).keys())}")
-            logger.error(f"   customer keys: {list(customer.keys())}")
-
-        # Log booking data for debugging
-        addon_ids = s.get("addon_ids", [])
-        logger.info(f"📋 Booking data: product_id={product_id}, date={booking_date}, slot_id={slot_id}, vehicle_id={vehicle_id}, address_id={address_id}, addon_ids={addon_ids}")
-
-        # Return phone_number and booking_data separately (method signature requirement)
-        return {
-            "phone_number": phone,
-            "booking_data": {
-                "product_id": product_id,
-                "booking_date": booking_date,
-                "slot_id": slot_id,
-                "vehicle_id": vehicle_id,
-                "address_id": address_id,
-                "electricity_provided": s.get("electricity_provided", 1),
-                "water_provided": s.get("water_provided", 1),
-                "addon_ids": s.get("addon_ids", []),
-                "payment_mode": "Pay Now"
-            }
-        }
+    # Extract booking params using transformer
+    transformer = ExtractBookingParams()
+    booking_params = transformer(None, state)
 
     logger.info("📝 Creating booking via create_booking_by_phone...")
     result = await call_frappe_node(
         state,
         client.booking_create.create_booking_by_phone,
         "booking_api_response",
-        state_extractor=extract_booking_params
+        state_extractor=lambda s: booking_params
     )
 
-    # Extract booking data from nested response structure
+    # Extract booking data from response
     api_response = result.get("booking_api_response", {})
     message = api_response.get("message", {})
 
-    # CRITICAL FIX: Update RESULT state (returned by call_frappe_node), not original state
     result["booking_response"] = message
     result["booking_id"] = message.get("booking_id", "Unknown")
     result["booking_data"] = message.get("booking_data", {})
 
     logger.info(f"✅ Booking created: {result.get('booking_id')}")
     logger.info(f"📋 Booking ID in state: {result.get('booking_id')}")
-    logger.info(f"📋 State keys: {list(result.keys())}")
-    return result  # Return the updated result state
+    return result
 
 
 async def generate_payment_qr(state: BookingState) -> BookingState:
@@ -290,17 +170,14 @@ async def send_unclear(state: BookingState) -> BookingState:
     return result
 
 
-def route_booking_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    has_price = state.get("total_price") is not None
-
-    if current_step == "awaiting_booking_confirmation" and has_price:
-        logger.info("🔀 Resuming booking confirmation - skipping price calc")
-        return "extract_confirmation"
-    else:
-        logger.info("🔀 Starting fresh booking flow")
-        return "calculate_price"
+# Create resume router for entry point
+route_booking_entry = create_resume_router(
+    awaiting_step="awaiting_booking_confirmation",
+    resume_node="extract_confirmation",
+    fresh_node="calculate_price",
+    readiness_check=lambda s: s.get("total_price") is not None,
+    router_name="booking_entry"
+)
 
 
 def create_booking_group() -> StateGraph:

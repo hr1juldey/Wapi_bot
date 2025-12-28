@@ -10,6 +10,7 @@
 ## Executive Summary
 
 ### Current State
+
 - **62 files** exceed 150-line limit (100 implementation + 50 overhead)
 - **20** duplicate `validate_` functions (DRY violation)
 - **25** duplicate `send_` functions (DRY violation)
@@ -18,12 +19,14 @@
 - **13 functions** in booking_group.py (Single Responsibility violation)
 
 ### Target State
+
 - **0 files** over 150 lines
 - **Zero** code duplication
 - **100%** SOLID compliance
 - **Zero** breaking changes (backward compatible via `__init__.py` re-exports)
 
 ### Impact Projection
+
 - **-5,200 lines** of code (20% reduction)
 - **-700 lines** from workflows (DRY elimination)
 - **-500 lines** from models (schema consolidation)
@@ -67,6 +70,7 @@ wapi_webhook.py (265 lines)
 ## Files Exceeding 150-Line Limit (62 Total)
 
 ### Workflows (10 files - HIGHEST PRIORITY)
+
 ```
 343  workflows/node_groups/booking_group.py
 248  workflows/node_groups/addon_group.py
@@ -81,6 +85,7 @@ wapi_webhook.py (265 lines)
 ```
 
 ### API Endpoints (5 files - HIGH PRIORITY)
+
 ```
 265  api/v1/wapi_webhook.py
 192  api/v1/ws_chat_endpoint.py
@@ -90,6 +95,7 @@ wapi_webhook.py (265 lines)
 ```
 
 ### Atomic Nodes (10 files - MEDIUM PRIORITY)
+
 ```
 255  nodes/atomic/call_api.py
 237  nodes/atomic/read_model.py
@@ -104,6 +110,7 @@ wapi_webhook.py (265 lines)
 ```
 
 ### Schemas/Models (7 files - EASY WINS)
+
 ```
 242  models/chat_schemas.py
 198  models/brain_schemas.py
@@ -115,6 +122,7 @@ wapi_webhook.py (265 lines)
 ```
 
 ### Frappe API Clients (17 files)
+
 ```
 262  clients/frappe_yawlit/customer/profile_client.py
 251  clients/frappe_yawlit/utils/http_client.py
@@ -130,6 +138,7 @@ wapi_webhook.py (265 lines)
 
 **booking_group.py (343 lines, 13 functions)**
 Doing too many things:
+
 - ❌ Price calculation
 - ❌ Confirmation handling
 - ❌ Booking creation
@@ -141,6 +150,7 @@ Doing too many things:
 **Should be:** 6 separate files
 
 **Other SRP violators:**
+
 - utilities_group.py (extract + validate + send)
 - addon_group.py (extract + validate + send)
 - address_group.py (extract + validate + send)
@@ -148,6 +158,7 @@ Doing too many things:
 ### 2. Open/Closed Principle (OCP)
 
 **Hardcoded extractors instead of Protocol pattern:**
+
 ```python
 # WRONG (booking_group.py lines 41-52)
 def extract_price_params(s):  # Hardcoded!
@@ -163,6 +174,7 @@ class PriceParamsExtractor(Protocol):
 ### 3. Dependency Inversion Principle (DIP)
 
 **Direct state mutations everywhere (79 occurrences):**
+
 ```python
 state["field"] = value  # Violates DIP - depends on concrete dict
 ```
@@ -174,17 +186,21 @@ state["field"] = value  # Violates DIP - depends on concrete dict
 ## DRY Violations
 
 ### Duplicate Function Patterns
+
 - **20** `validate_` functions → should use atomic `validate.node()`
 - **25** `send_` functions → should use atomic `send_message.node()`
 - **10** `build_` functions → should use message builders
 
 ### Duplicate Code in Workflow Groups
+
 - **88** logger calls → needs logging abstraction
 - **79** direct state modifications → needs state manager
 - **6** try/except blocks → needs error handler decorator
 
 ### Entry Router Pattern Duplication
+
 Duplicated across 4+ node groups:
+
 - `route_booking_entry()` in booking_group.py
 - `route_service_entry()` in service_group.py
 - Similar patterns in addon_group.py, slot_group.py
@@ -201,6 +217,7 @@ Duplicated across 4+ node groups:
 **Safe Order (based on dependency analysis):**
 
 #### 1. chat_schemas.py (242 → 3 files)
+
 **Risk:** 🟢 Lowest (1 dependent)
 
 ```
@@ -212,6 +229,7 @@ models/chat_schemas/
 ```
 
 **Migration:**
+
 ```python
 # OLD import (still works)
 from models.chat_schemas import ChatRequest
@@ -221,6 +239,7 @@ from models.chat_schemas.request_schemas import ChatRequest
 ```
 
 #### 2. wapi_client.py (279 → 4 files)
+
 **Risk:** 🟢 Low (has `__init__.py`, 4 dependents)
 
 ```
@@ -235,6 +254,7 @@ clients/wapi/
 **Critical dependent:** `nodes/atomic/send_message.py` (must verify after split)
 
 #### 3. booking_group.py (343 → 6 files)
+
 **Risk:** 🟢 Low (1 dependent)
 
 ```
@@ -250,6 +270,7 @@ workflows/node_groups/booking_group/
 **Dependent:** `workflows/existing_user_booking.py` - verify import
 
 #### 4. wapi_webhook.py (265 → 4 files)
+
 **Risk:** 🟢 Lowest (router registration only)
 
 ```
@@ -268,6 +289,7 @@ api/v1/wapi_webhook/
 ### Phase 2: DRY Elimination
 
 #### 5. Extract Shared Entry Router Pattern
+
 **Files affected:** 4+ node groups
 **Lines saved:** 80+
 
@@ -295,8 +317,10 @@ def create_entry_router(
 ```
 
 #### 6. Replace Inline validate_ Functions
+
 **Target:** 20 functions → use `validate.node()`
 **Pattern:**
+
 ```python
 # BEFORE
 async def validate_phone(state):
@@ -310,8 +334,10 @@ await validate.node(state, PhoneValidator(), "phone")
 ```
 
 #### 7. Replace Inline send_ Functions
+
 **Target:** 25 functions → use `send_message.node()`
 **Pattern:**
+
 ```python
 # BEFORE
 async def send_greeting(state):
@@ -324,6 +350,7 @@ await send_message.node(state, GreetingBuilder())
 ```
 
 #### 8. Create Error Handler Decorator
+
 **Eliminate:** 6 duplicate try/except blocks
 
 ```python
@@ -351,6 +378,7 @@ async def create_booking(state: BookingState) -> BookingState:
 ### Phase 3: SOLID Compliance
 
 #### 9. Create State Manager Abstraction
+
 **Eliminate:** 79 direct state mutations
 
 ```python
@@ -384,6 +412,7 @@ class StateManager:
 ```
 
 #### 10. Convert Lambdas to Protocol Implementations
+
 **Target:** 34 occurrences
 
 ```python
@@ -402,29 +431,34 @@ workflow.add_node("entry", PassThroughNode())
 
 ## Validation & Testing Strategy
 
-### After Each Phase:
+### After Each Phase
 
 1. **Run full test suite**
+
    ```bash
    pytest src/tests/ -v
    ```
 
 2. **Verify imports work**
+
    ```bash
    python -c "from models.chat_schemas import ChatRequest"
    ```
 
 3. **Test API endpoints**
+
    ```bash
    curl http://localhost:8000/health/doctor
    ```
 
 4. **Check for circular imports**
+
    ```bash
    python -m ruff check src/
    ```
 
 5. **Commit changes**
+
    ```bash
    git add .
    git commit -m "refactor: split chat_schemas.py (Phase 1, Task 1)"
@@ -446,6 +480,7 @@ workflow.add_node("entry", PassThroughNode())
 ## Success Metrics
 
 ### Before Refactoring
+
 - ✅ 25,197 lines of code
 - ❌ 62 files over 150 lines
 - ❌ 20 validate_ duplicates
@@ -455,6 +490,7 @@ workflow.add_node("entry", PassThroughNode())
 - ❌ SOLID violations
 
 ### After Refactoring
+
 - ✅ ~20,000 lines of code (20% reduction)
 - ✅ 0 files over 150 lines
 - ✅ 0 duplicate functions
@@ -468,6 +504,7 @@ workflow.add_node("entry", PassThroughNode())
 ## Risk Mitigation
 
 ### Backward Compatibility Strategy
+
 All refactored files maintain `__init__.py` re-exports:
 
 ```python
@@ -481,6 +518,7 @@ __all__ = ["ChatRequest", "SimpleContact", "SimpleMessage", "ChatResponse"]
 ```
 
 This ensures:
+
 - ✅ Old imports still work: `from models.chat_schemas import ChatRequest`
 - ✅ New imports recommended: `from models.chat_schemas.request_schemas import ChatRequest`
 - ✅ Zero breaking changes for existing code
@@ -491,6 +529,7 @@ This ensures:
 ## Files to Watch
 
 ### Critical Dependencies
+
 These files import from priority refactoring targets and must be verified after each split:
 
 1. `api/v1/chat_endpoint.py` - imports chat_schemas
@@ -500,7 +539,9 @@ These files import from priority refactoring targets and must be verified after 
 5. `tasks/reminder_tasks.py` - imports wapi_client
 
 ### Test Files to Update
+
 After splitting, these test files may need import updates:
+
 - `tests/unit/test_wapi_demo.py`
 - Any tests importing from refactored files
 
@@ -515,6 +556,7 @@ If issues arise during refactoring:
 3. **All phases:** Restore from baseline commit (tag before refactoring)
 
 **Tag baseline:**
+
 ```bash
 git tag -a refactor-baseline-2025-12-27 -m "Baseline before SOLID/DRY refactoring"
 ```
@@ -526,3 +568,197 @@ git tag -a refactor-baseline-2025-12-27 -m "Baseline before SOLID/DRY refactorin
 - **CLAUDE.md:** 100-line rule, SOLID principles, atomic node pattern
 - **Original plan:** `/home/riju279/.claude/plans/sharded-churning-rivest-agent-a949221.md`
 - **Agent ID:** a949221 (resume planning agent if needed)
+
+● 📊 COMPREHENSIVE CODEBASE AUDIT REPORT
+
+  1️⃣ LINE COUNT SUMMARY
+
+  ✅ Atomic Nodes (Within Limits)
+
+  | File          | Lines | Status             |
+  |---------------|-------|--------------------|
+  | checkpoint.py | 92    | ✅ Perfect         |
+  | log.py        | 92    | ✅ Perfect         |
+  | condition.py  | 101   | ✅ Within limit    |
+  | response.py   | 108   | ✅ Within overhead |
+  | transform.py  | 136   | ✅ Within overhead |
+
+  ❌ Atomic Nodes (VIOLATIONS - Exceed 150 lines)
+
+  | File               | Lines | Over Limit   |
+  |--------------------|-------|--------------|
+  | call_frappe.py     | 152   | +2 lines     |
+  | send_message.py    | 158   | +8 lines     |
+  | confidence_gate.py | 164   | +14 lines    |
+  | extract.py         | 177   | +27 lines    |
+  | read_signature.py  | 181   | +31 lines    |
+  | scan.py            | 192   | +42 lines ⚠️ |
+
+  ❌ Node Groups (ALL EXCEED 150-line limit)
+
+  | File                     | Lines | Status       | Target |
+  |--------------------------|-------|--------------|--------|
+  | utilities_group.py       | 159   | ❌ +9        | 100    |
+  | address_group.py         | 183   | ❌ +33       | 170    |
+  | slot_preference_group.py | 201   | ❌ +51       | 120    |
+  | slot_group.py            | 218   | ❌ +68       | 120    |
+  | addon_group.py           | 230   | ❌ +80       | 140    |
+  | booking_group.py         | 360   | ❌ +210 ⚠️⚠️ | 140    |
+
+  2️⃣ DRY VIOLATIONS (Code Duplication)
+
+  🔴 CRITICAL: Duplicated Resume Routers (8 files)
+
+  Violation: Each node group has its own route_*_entry() function with identical logic
+
+# Found in: addon_group, address_group, booking_group, service_group
+
+# slot_group, slot_preference_group, utilities_group, vehicle_group
+
+  def route_*_entry(state: BookingState) -> str:
+      current_step = state.get("current_step", "")
+      # ... same pattern in all files
+  Impact: ~160 lines of duplicated code (8 files × ~20 lines)
+  Fix: Create reusable resume_router.py (Step 38 - not completed)
+
+  🔴 CRITICAL: Duplicated Error Handlers (6 files)
+
+  Violation: Each selection group has its own send_*_error() function
+
+# Found in: addon_group, address_group, service_group
+
+# slot_group, vehicle_group
+
+  async def send_*_error(state: BookingState) -> BookingState:
+      error_msg = state.get("selection_error", "...")
+      result = await send_message_node(state, lambda s: error_msg)
+      # ... same pattern
+  Impact: ~90 lines of duplicated code (6 files × ~15 lines)
+  Fix: Create reusable selection_error_handler.py (Step 39 - not completed)
+
+  🟡 MODERATE: Inline Extraction Logic (3 files)
+
+  Violation: addon_group.py, address_group.py, utilities_group.py still have inline extraction
+
+# addon_group.py lines 63-117 (54 lines of inline extraction)
+
+  async def extract_addon_selection(state: BookingState) -> BookingState:
+      # Manual parsing, validation, formatting...
+  Impact: ~150 lines that should use domain extractors
+  Fix: Use atomic extract.node() with domain extractors
+
+  3️⃣ SOLID VIOLATIONS
+
+  ⚠️ Single Responsibility Violations
+
+  booking_group.py (360 lines) - Does TOO MUCH:
+
+- Price calculation
+- Confirmation handling
+- Booking creation
+- Payment QR generation
+- Success/error messaging
+- Resume routing
+
+  Recommendation: Split into sub-workflows:
+
+- price_calculation_group.py (~80 lines)
+- booking_confirmation_group.py (~120 lines)
+- payment_flow_group.py (~100 lines)
+
+  ⚠️ Open/Closed Violations
+
+  Inline business logic instead of using Protocols:
+
+# addon_group.py lines 69-75 - Hardcoded keyword matching
+
+  if any(keyword in user_message for keyword in ["none", "skip", "no", "nah"]):
+      state["skipped_addons"] = True
+  Fix: Use extract.node() with configurable extractor
+
+  4️⃣ BLENDER ARCHITECTURE VIOLATIONS
+
+  🔴 CRITICAL: Node Groups Too Large
+
+  Violation: ALL node groups exceed the 150-line "wiring only" target
+
+  booking_group.py (360 lines) - Should be ~140 lines:
+
+- Has inline price calculation logic (should be domain node)
+- Has inline booking params extraction (should be transformer)
+- Recommendation: Extract to domain nodes, reduce to ~200 lines
+
+  addon_group.py (230 lines) - Should be ~140 lines:
+
+- 54 lines of inline extraction (lines 63-117)
+- Recommendation: Use extract_addon.node(), reduce to ~170 lines
+
+  slot_group.py (218 lines) - Should be ~120 lines:
+
+- Already using transformers ✅
+- Excess is mostly from API call overhead
+- Acceptable given complexity
+
+  ⚠️ Missing Domain Nodes
+
+  Expected but missing:
+
+- extract_addon.py (Step 31 blocked)
+- resume_router.py (Step 38 not done)
+- selection_error_handler.py (Step 39 not done)
+
+  5️⃣ COMPLIANCE SUMMARY
+
+  | Principle      | Status     | Violations                    | Impact |
+  |----------------|------------|-------------------------------|--------|
+  | 100-line limit | 🔴 FAIL    | 6 atomic nodes, 6 node groups | High   |
+  | DRY            | 🔴 FAIL    | ~250 lines duplicated         | High   |
+  | SOLID - SRP    | 🟡 PARTIAL | booking_group too large       | Medium |
+  | SOLID - OCP    | 🟢 PASS    | Using Protocols               | -      |
+  | SOLID - DIP    | 🟢 PASS    | Protocol-based design         | -      |
+  | Blender        | 🟡 PARTIAL | Node groups too large         | Medium |
+
+  6️⃣ PRIORITY FIXES
+
+  Immediate (High Priority)
+
+  1. ✅ Split booking_group.py (360 → 200 lines)
+  - Extract price calculation
+  - Extract payment flow
+  1. ✅ Refactor addon extraction (230 → 170 lines)
+  - Use extract.node() with AddonExtractor
+  1. ✅ Create resume_router.py
+  - Eliminate ~160 lines of duplication
+  1. ✅ Create selection_error_handler.py
+  - Eliminate ~90 lines of duplication
+
+  Secondary (Medium Priority)
+
+  1. ⚠️ Refactor large atomic nodes
+  - scan.py (192 → 150 lines)
+  - read_signature.py (181 → 150 lines)
+  - extract.py (177 → 150 lines)
+
+  Tertiary (Low Priority)
+
+  1. 📝 Document acceptable violations
+  - slot_group.py complexity justified
+  - Some overhead for error handling acceptable
+
+  📈 PHASE 3 SUCCESS METRICS
+
+  ✅ Achievements:
+
+- Created 4 atomic nodes (393 lines total)
+- Refactored 5 message builders (saved ~92 lines)
+- Added brain awareness to all atomic nodes
+- Established Protocol-based architecture
+
+  ❌ Remaining Work:
+
+- 250 lines of duplicated code (DRY violations)
+- 6 node groups exceed line limits
+- 6 atomic nodes exceed 150 lines
+- 3 missing domain nodes
+
+  Overall Grade: B+ (Good progress, but needs cleanup for production)

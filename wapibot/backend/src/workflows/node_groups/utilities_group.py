@@ -11,6 +11,8 @@ from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from nodes.message_builders.utilities_selection import UtilitiesSelectionBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 
 logger = logging.getLogger(__name__)
 
@@ -71,21 +73,20 @@ async def validate_utilities(state: BookingState) -> BookingState:
 
 async def send_invalid_utilities(state: BookingState) -> BookingState:
     """Send message for invalid utilities response."""
-
-    def invalid_message(s):
+    def error_builder(s):
         return """Please reply with "Yes" or "No" for both electricity and water.
 
 Examples:
 • "Yes Yes" - Both available
 • "Yes No" - Only electricity
 • "No Yes" - Only water
-• "No No" - Neither available
-"""
+• "No No" - Neither available"""
 
-    result = await send_message_node(state, invalid_message)
-    result["should_proceed"] = False
-    result["current_step"] = "awaiting_utilities"
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_utilities",
+        error_message_builder=error_builder
+    )
 
 
 def route_utilities_validation(state: BookingState) -> str:
@@ -99,18 +100,14 @@ def route_utilities_validation(state: BookingState) -> str:
         return "invalid"
 
 
-def route_utilities_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    electricity = state.get("electricity_provided")
-    water = state.get("water_provided")
-
-    if current_step == "awaiting_utilities" and (electricity is None or water is None):
-        logger.info("🔀 Resuming utilities collection - extracting response")
-        return "extract_utilities"
-    else:
-        logger.info("🔀 Starting fresh utilities collection")
-        return "ask_utilities"
+# Create resume router for entry point
+route_utilities_entry = create_resume_router(
+    awaiting_step="awaiting_utilities",
+    resume_node="extract_utilities",
+    fresh_node="ask_utilities",
+    readiness_check=lambda s: s.get("electricity_provided") is None or s.get("water_provided") is None,
+    router_name="utilities_entry"
+)
 
 
 def create_utilities_group() -> StateGraph:

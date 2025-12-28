@@ -20,6 +20,8 @@ from workflows.shared.state import BookingState
 from nodes.selection.generic_handler import handle_selection, route_after_selection
 from nodes.atomic.send_message import node as send_message_node
 from nodes.message_builders.vehicle_options import VehicleOptionsBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +53,10 @@ async def process_vehicle_selection(state: BookingState) -> BookingState:
 
 async def send_vehicle_error(state: BookingState) -> BookingState:
     """Send error message for invalid vehicle selection."""
-    error_msg = state.get("selection_error", "Invalid selection. Please try again.")
-    result = await send_message_node(state, lambda s: error_msg)
-    result["should_proceed"] = False  # Stop and wait for next user message
-    result["current_step"] = "awaiting_vehicle_selection"  # Resume here on next message
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_vehicle_selection"
+    )
 
 
 def route_vehicle_entry(state: BookingState) -> str:

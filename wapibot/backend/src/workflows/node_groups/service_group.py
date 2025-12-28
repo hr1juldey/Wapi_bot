@@ -22,6 +22,8 @@ from nodes.selection.generic_handler import handle_selection, route_after_select
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.call_frappe import node as call_frappe_node
 from nodes.message_builders.service_catalog import ServiceCatalogBuilder
+from nodes.routing.resume_router import create_resume_router
+from nodes.error_handling.selection_error_handler import handle_selection_error
 from clients.frappe_yawlit import get_yawlit_client
 
 logger = logging.getLogger(__name__)
@@ -86,24 +88,20 @@ async def process_service_selection(state: BookingState) -> BookingState:
 
 async def send_service_error(state: BookingState) -> BookingState:
     """Send error message for invalid service selection."""
-    error_msg = state.get("selection_error", "Invalid selection. Please try again.")
-    result = await send_message_node(state, lambda s: error_msg)
-    result["should_proceed"] = False  # Stop and wait for next user message
-    result["current_step"] = "awaiting_service_selection"  # Resume here on next message
-    return result
+    return await handle_selection_error(
+        state,
+        awaiting_step="awaiting_service_selection"
+    )
 
 
-def route_service_entry(state: BookingState) -> str:
-    """Route based on whether we're resuming or starting fresh."""
-    current_step = state.get("current_step", "")
-    has_services = bool(state.get("service_options"))
-
-    if current_step == "awaiting_service_selection" and has_services:
-        logger.info("🔀 Resuming service selection - skipping fetch")
-        return "process_selection"
-    else:
-        logger.info("🔀 Starting fresh service fetch")
-        return "fetch_services"
+# Create resume router for entry point
+route_service_entry = create_resume_router(
+    awaiting_step="awaiting_service_selection",
+    resume_node="process_selection",
+    fresh_node="fetch_services",
+    readiness_check=lambda s: bool(s.get("service_options")),
+    router_name="service_entry"
+)
 
 
 def create_service_group() -> StateGraph:
