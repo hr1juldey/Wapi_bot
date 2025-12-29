@@ -5,13 +5,11 @@ Tests SQLModel connection, tables, and repository operations.
 
 import pytest
 import json
-from datetime import datetime
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.db_models import ConversationStateTable, ConversationHistoryTable
 from repositories.conversation_repository import ConversationRepository
-from workflows.shared.state import BookingState
 
 
 class TestDatabaseTables:

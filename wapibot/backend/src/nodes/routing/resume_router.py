@@ -15,7 +15,7 @@ Blender Architecture:
 """
 
 import logging
-from typing import Callable, Optional, Any
+from typing import Callable, Optional
 from workflows.shared.state import BookingState
 
 logger = logging.getLogger(__name__)

@@ -1,10 +1,4 @@
-"""Utilities collection node group.
-
-Handles:
-- Asking about electricity and water availability (via message builder)
-- Extracting yes/no responses for both utilities
-- Validating that both fields are set
-"""
+"""Utilities collection - ask, extract, validate electricity/water availability."""
 
 import logging
 from langgraph.graph import StateGraph, END
@@ -73,20 +67,9 @@ async def validate_utilities(state: BookingState) -> BookingState:
 
 async def send_invalid_utilities(state: BookingState) -> BookingState:
     """Send message for invalid utilities response."""
-    def error_builder(s):
-        return """Please reply with "Yes" or "No" for both electricity and water.
-
-Examples:
-• "Yes Yes" - Both available
-• "Yes No" - Only electricity
-• "No Yes" - Only water
-• "No No" - Neither available"""
-
-    return await handle_selection_error(
-        state,
-        awaiting_step="awaiting_utilities",
-        error_message_builder=error_builder
-    )
+    def error_msg(s):
+        return 'Please reply "Yes" or "No" for both.\nE.g., "Yes Yes", "Yes No", "No Yes", "No No"'
+    return await handle_selection_error(state, awaiting_step="awaiting_utilities", error_message_builder=error_msg)
 
 
 def route_utilities_validation(state: BookingState) -> str:
@@ -111,46 +94,19 @@ route_utilities_entry = create_resume_router(
 
 
 def create_utilities_group() -> StateGraph:
-    """Create utilities collection node group."""
+    """Create utilities collection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("ask_utilities", ask_utilities)
     workflow.add_node("extract_utilities", extract_utilities)
     workflow.add_node("validate_utilities", validate_utilities)
     workflow.add_node("send_invalid_utilities", send_invalid_utilities)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_utilities_entry,
-        {
-            "ask_utilities": "ask_utilities",
-            "extract_utilities": "extract_utilities"
-        }
-    )
-
-    # After asking, END and wait for user input
+    workflow.add_conditional_edges("entry", route_utilities_entry,
+        {"ask_utilities": "ask_utilities", "extract_utilities": "extract_utilities"})
     workflow.add_edge("ask_utilities", END)
-
-    # After extracting, validate
     workflow.add_edge("extract_utilities", "validate_utilities")
-
-    # Route based on validation
-    workflow.add_conditional_edges(
-        "validate_utilities",
-        route_utilities_validation,
-        {
-            "valid": END,  # Valid response, proceed
-            "invalid": "send_invalid_utilities"
-        }
-    )
-
-    # After invalid message, END and wait for retry
+    workflow.add_conditional_edges("validate_utilities", route_utilities_validation,
+        {"valid": END, "invalid": "send_invalid_utilities"})
     workflow.add_edge("send_invalid_utilities", END)
-
     return workflow.compile()

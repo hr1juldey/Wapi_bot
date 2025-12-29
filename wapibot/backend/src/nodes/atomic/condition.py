@@ -14,7 +14,7 @@ Replaces inline if/else logic in node groups.
 """
 
 import logging
-from typing import Protocol, Any, Callable
+from typing import Protocol
 from workflows.shared.state import BookingState
 from core.brain_config import get_brain_settings
 

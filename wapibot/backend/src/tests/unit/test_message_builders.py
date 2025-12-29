@@ -1,6 +1,5 @@
 """Unit tests for message builders."""
 
-import pytest
 from message_builders.greeting import GreetingBuilder
 from message_builders.service_catalog import ServiceCatalogBuilder
 from message_builders.booking_confirmation import BookingConfirmationBuilder

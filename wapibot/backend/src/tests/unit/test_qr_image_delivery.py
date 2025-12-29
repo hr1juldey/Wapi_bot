@@ -33,14 +33,14 @@ async def test_qr_image_delivery():
     amount = 10.0
     session_id = str(uuid.uuid4())
 
-    print(f"\n📋 Test Configuration:")
+    print("\n📋 Test Configuration:")
     print(f"   Phone: {phone}")
     print(f"   Amount: ₹{amount}")
     print(f"   Session: {session_id[:8]}...")
     print(f"   Public URL: {settings.public_base_url}")
 
     # Step 1: Generate QR
-    print(f"\n⏳ Step 1: Generating QR code...")
+    print("\n⏳ Step 1: Generating QR code...")
     upi_string = qr_service.generate_upi_string(
         amount=amount,
         transaction_note=f"Test Booking {session_id[:8]}"
@@ -55,7 +55,7 @@ async def test_qr_image_delivery():
     time.sleep(5)
     
     # Step 2: Verify endpoint
-    print(f"\n⏳ Step 2: Testing QR endpoint...")
+    print("\n⏳ Step 2: Testing QR endpoint...")
     endpoint_url = f"{settings.public_base_url}/api/v1/qr/{session_id}.png"
     print(f"   🌐 URL: {endpoint_url}")
 
@@ -72,10 +72,10 @@ async def test_qr_image_delivery():
 
     except Exception as e:
         print(f"   ⚠️  Could not reach endpoint: {e}")
-        print(f"   💡 Make sure backend is running: uvicorn src.main:app --reload")
+        print("   💡 Make sure backend is running: uvicorn src.main:app --reload")
 
     # Step 3: Send via WAPI
-    print(f"\n⏳ Step 3: Sending QR image via WAPI...")
+    print("\n⏳ Step 3: Sending QR image via WAPI...")
     try:
         client = get_wapi_client()
 
@@ -106,13 +106,13 @@ async def test_qr_image_delivery():
     print("\n" + "=" * 80)
     print("✅ QR IMAGE DELIVERY TEST COMPLETE")
     print("=" * 80)
-    print(f"\n📊 Results:")
+    print("\n📊 Results:")
     print(f"   ✅ QR Code Generated: {qr_path}")
     print(f"   ✅ Endpoint Accessible: {endpoint_url}")
     print(f"   ✅ WAPI Delivery: {phone}")
-    print(f"\n✨ Customer should now receive:")
-    print(f"   1️⃣ QR code image in WhatsApp")
-    print(f"   2️⃣ Caption with payment instructions")
+    print("\n✨ Customer should now receive:")
+    print("   1️⃣ QR code image in WhatsApp")
+    print("   2️⃣ Caption with payment instructions")
     print()
 
 

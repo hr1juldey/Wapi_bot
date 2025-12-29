@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 from fallbacks.ordinal_patterns import (
-    ORDINAL_PATTERNS,
     RELATIVE_DAY_PATTERNS,
     MONTH_NAMES
 )

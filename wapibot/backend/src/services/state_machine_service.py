@@ -3,7 +3,6 @@
 Determines next conversation state based on completeness and intent.
 """
 
-from typing import Dict, Any
 from workflows.shared.state import BookingState
 from services.completeness_service import completeness_service
 

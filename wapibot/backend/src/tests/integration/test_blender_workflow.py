@@ -69,12 +69,12 @@ async def test_workflow():
             print(f"🚗 Vehicles: {len(result['vehicle_options'])} options available")
 
         if result.get("profile_complete"):
-            print(f"✅ Profile: Complete")
+            print("✅ Profile: Complete")
         else:
-            print(f"⚠️  Profile: Incomplete")
+            print("⚠️  Profile: Incomplete")
 
         if result.get("response"):
-            print(f"\n💬 Response sent to user:")
+            print("\n💬 Response sent to user:")
             print(f"   {result['response']}")
 
         print("-" * 60)

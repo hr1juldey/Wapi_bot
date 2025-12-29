@@ -9,7 +9,6 @@ Now: ONE node, ONE API call.
 """
 
 import logging
-from typing import Dict, Any
 from workflows.shared.state import BookingState
 from clients.frappe_yawlit import get_yawlit_client
 from models.customer import Phone

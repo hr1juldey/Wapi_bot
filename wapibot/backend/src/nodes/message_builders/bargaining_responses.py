@@ -75,8 +75,8 @@ class BargainingResponseBuilder:
     def _escalate_response(self) -> str:
         """Stage 4: Escalate to human support."""
         return (
-            f"💬 I want to make sure you get the best deal!\n\n"
-            f"Let me connect you with my team who can discuss "
-            f"custom pricing for your needs.\n\n"
-            f"Transferring you now..."
+            "💬 I want to make sure you get the best deal!\n\n"
+            "Let me connect you with my team who can discuss "
+            "custom pricing for your needs.\n\n"
+            "Transferring you now..."
         )

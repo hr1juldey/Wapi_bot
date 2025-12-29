@@ -6,7 +6,6 @@ Requires Ollama running with gemma3:4b model.
 
 import pytest
 import dspy
-from typing import Dict, Any
 
 from dspy_modules.extractors.name_extractor import NameExtractor
 from dspy_modules.extractors.email_extractor import EmailExtractor

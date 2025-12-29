@@ -13,7 +13,6 @@ Replaces 3 duplicate nodes:
 """
 
 import logging
-from typing import List, Dict, Any, Optional
 from workflows.shared.state import BookingState
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ async def handle_selection(
         selection_index = int(user_input) - 1  # Convert to 0-based
     except ValueError:
         error_msg = f"Please reply with a number from 1 to {len(options)}"
-        logger.warning(f"⚠️ Invalid input: not a number")
+        logger.warning("⚠️ Invalid input: not a number")
         state["selection_error"] = error_msg
         return state
 

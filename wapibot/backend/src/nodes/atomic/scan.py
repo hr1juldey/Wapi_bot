@@ -16,7 +16,7 @@ Usage:
 
 import asyncio
 import logging
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Optional, Protocol
 from workflows.shared.state import BookingState
 from core.config import settings
 

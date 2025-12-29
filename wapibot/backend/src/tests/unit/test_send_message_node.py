@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from nodes.atomic import send_message
-from workflows.shared.state import BookingState
 
 
 @pytest.mark.asyncio

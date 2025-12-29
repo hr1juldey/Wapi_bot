@@ -1,6 +1,5 @@
 """Unit tests for GEPA metric functions."""
 
-import pytest
 import dspy
 from dspy_modules.metrics import (
     conflict_metric,

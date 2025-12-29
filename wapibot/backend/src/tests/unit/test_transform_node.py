@@ -2,7 +2,6 @@
 
 import pytest
 from nodes.atomic import transform
-from workflows.shared.state import BookingState
 
 
 @pytest.mark.asyncio

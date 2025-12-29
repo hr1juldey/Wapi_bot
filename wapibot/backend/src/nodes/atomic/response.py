@@ -12,7 +12,7 @@ Blender Design:
 """
 
 import logging
-from typing import Protocol, Union, Callable
+from typing import Protocol
 from workflows.shared.state import BookingState
 from nodes.atomic.send_message import node as send_message_node
 from core.brain_config import get_brain_settings

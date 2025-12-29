@@ -5,7 +5,6 @@ Background tasks for payment processing and management.
 
 import asyncio
 import logging
-from datetime import datetime
 
 from celery import shared_task
 from sqlmodel import select

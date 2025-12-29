@@ -1,13 +1,4 @@
-"""Slot selection node group.
-
-Handles:
-- Fetching available slots from Frappe API
-- Filtering slots by user preferences (date/time range)
-- Grouping slots by time of day (morning/afternoon/evening)
-- Displaying grouped slots to user
-- Processing slot selection
-- Error handling
-"""
+"""Slot selection - fetch, filter by preference, group by time, display, process selection."""
 
 import logging
 from datetime import datetime, timedelta
@@ -16,7 +7,6 @@ from workflows.shared.state import BookingState
 from nodes.selection.generic_handler import handle_selection, route_after_selection
 from nodes.atomic.send_message import node as send_message_node
 from nodes.atomic.transform import node as transform_node
-from nodes.transformers.format_slot_options import FormatSlotOptions
 from nodes.transformers.filter_slots_by_preference import FilterSlotsByPreference
 from nodes.transformers.group_slots_by_time import GroupSlotsByTime
 from nodes.message_builders.grouped_slots import GroupedSlotsBuilder
@@ -28,112 +18,62 @@ logger = logging.getLogger(__name__)
 
 
 async def fetch_slots(state: BookingState) -> BookingState:
-    """Fetch available appointment slots from Frappe API.
-
-    Queries slots for next 7 days based on selected service and vehicle type.
-    """
+    """Fetch available appointment slots from Frappe API for next 7 days."""
     client = get_yawlit_client()
-
-    # Get service ID from selected service
     selected_service = state.get("selected_service")
     service_id = selected_service.get("name") if selected_service else None
-
-    # Get vehicle type from vehicle
     vehicle = state.get("vehicle", {})
     vehicle_type = vehicle.get("vehicle_type") if vehicle else None
-
     if not service_id:
         logger.warning("⚠️ No service selected, cannot fetch slots")
         state["slot_options"] = []
         return state
-
-    # Fetch slots based on preferred date or next 7 days
     all_slots = []
     today = datetime.now().date()
-
-    # Check if user has a preferred date
     preferred_date = state.get("preferred_date", "")
     if preferred_date:
         try:
-            # Parse preferred date and fetch around it
             start_date = datetime.fromisoformat(preferred_date).date()
-            logger.info(f"📅 Fetching slots for preferred date: {preferred_date} and surrounding dates")
+            logger.info(f"📅 Fetching slots for preferred date: {preferred_date}")
         except (ValueError, TypeError):
-            logger.warning(f"⚠️ Invalid preferred_date format: {preferred_date}, using today")
+            logger.warning(f"⚠️ Invalid preferred_date: {preferred_date}, using today")
             start_date = today
     else:
         start_date = today
-
     for i in range(7):
         date = start_date + timedelta(days=i)
         date_str = date.strftime("%Y-%m-%d")
-
         try:
-            response = await client.slot_availability.get_available_slots_enhanced(
-                service_id=service_id,
-                date=date_str,
-                vehicle_type=vehicle_type
-            )
-
-            # Extract slots from response
+            response = await client.slot_availability.get_available_slots_enhanced(service_id=service_id, date=date_str, vehicle_type=vehicle_type)
             slots = response.get("message", {}).get("slots", [])
             if not slots:
                 slots = response.get("slots", [])
             if not slots and isinstance(response.get("message"), list):
                 slots = response["message"]
-
-            logger.info(f"📅 API returned {len(slots)} slot(s) for {date_str}")
-
-            # Filter only available slots (API may return unavailable ones)
             available_slots = [slot for slot in slots if slot.get("available", True) is not False]
-
-            logger.info(f"📅 After filtering: {len(available_slots)} available slot(s) for {date_str}")
-
-            # Add date to each slot
+            logger.info(f"📅 {len(available_slots)} available slot(s) for {date_str}")
             for slot in available_slots:
                 slot["date"] = date_str
-                slot["available"] = True  # Already filtered for available
-                # Format time_slot if not present
+                slot["available"] = True
                 if "time_slot" not in slot:
                     start = slot.get("start_time", "")
                     end = slot.get("end_time", "")
                     if start and end:
                         slot["time_slot"] = f"{start} - {end}"
-
             all_slots.extend(available_slots)
-
         except Exception as e:
             logger.error(f"❌ Failed to fetch slots for {date_str}: {e}")
-            logger.error(f"   Response: {response if 'response' in locals() else 'No response'}")
             continue
-
     state["slot_options"] = all_slots
-    logger.info(f"📅 Fetched {len(all_slots)} slot(s) from Frappe API")
+    logger.info(f"📅 Fetched {len(all_slots)} slot(s) total")
     return state
 
 
 async def format_and_send_slots(state: BookingState) -> BookingState:
     """Filter, group, and send slots to customer, then pause for user input."""
-    # Step 1: Filter slots by preferences (if any)
-    filtered = await transform_node(
-        state,
-        FilterSlotsByPreference(),
-        "slot_options",
-        "filtered_slot_options"
-    )
-
-    # Step 2: Group slots by time of day (morning/afternoon/evening)
-    grouped = await transform_node(
-        filtered,
-        GroupSlotsByTime(),
-        "filtered_slot_options",
-        "grouped_slots"
-    )
-
-    # Step 3: Send grouped slots message
+    filtered = await transform_node(state, FilterSlotsByPreference(), "slot_options", "filtered_slot_options")
+    grouped = await transform_node(filtered, GroupSlotsByTime(), "filtered_slot_options", "grouped_slots")
     result = await send_message_node(grouped, GroupedSlotsBuilder())
-
-    # Pause and wait for user's slot selection
     result["should_proceed"] = False
     result["current_step"] = "awaiting_slot_selection"
     return result
@@ -141,17 +81,10 @@ async def format_and_send_slots(state: BookingState) -> BookingState:
 
 async def process_slot_selection(state: BookingState) -> BookingState:
     """Process slot selection from user."""
-    # Use filtered_slot_options since that's what we showed to the user
-    result = await handle_selection(
-        state,
-        selection_type="slot",
-        options_key="filtered_slot_options",
-        selected_key="slot"
-    )
-    # Clear current_step to indicate we're moving to the next step (booking confirmation)
+    result = await handle_selection(state, selection_type="slot", options_key="filtered_slot_options", selected_key="slot")
     if result.get("slot"):
         result["current_step"] = ""
-        result["should_proceed"] = True  # Continue to booking confirmation
+        result["should_proceed"] = True
     return result
 
 
@@ -174,43 +107,19 @@ route_slot_entry = create_resume_router(
 
 
 def create_slot_group() -> StateGraph:
-    """Create slot selection node group."""
+    """Create slot selection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("fetch_slots", fetch_slots)
     workflow.add_node("show_slots", format_and_send_slots)
     workflow.add_node("process_selection", process_slot_selection)
     workflow.add_node("send_error", send_slot_error)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_slot_entry,
-        {
-            "fetch_slots": "fetch_slots",
-            "process_selection": "process_selection"
-        }
-    )
-
+    workflow.add_conditional_edges("entry", route_slot_entry,
+        {"fetch_slots": "fetch_slots", "process_selection": "process_selection"})
     workflow.add_edge("fetch_slots", "show_slots")
-    # After showing slots, END and wait for user input (pause)
     workflow.add_edge("show_slots", END)
-
-    workflow.add_conditional_edges(
-        "process_selection",
-        route_after_selection,
-        {
-            "selection_error": "send_error",
-            "selection_success": END
-        }
-    )
-
-    # Error path: send error and END (don't loop!)
+    workflow.add_conditional_edges("process_selection", route_after_selection,
+        {"selection_error": "send_error", "selection_success": END})
     workflow.add_edge("send_error", END)
-
     return workflow.compile()

@@ -7,7 +7,6 @@ Uses SQLModel ORM for type-safe database operations.
 import json
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from sqlmodel import select, func
 
 from workflows.shared.state import BookingState

@@ -15,7 +15,6 @@ from sqlalchemy.pool import StaticPool
 
 # Import table models to register them with SQLModel metadata
 from db.db_models import ConversationStateTable, ConversationHistoryTable
-from models import PaymentSession, PaymentTransaction, PaymentReminder
 
 logger = logging.getLogger(__name__)
 

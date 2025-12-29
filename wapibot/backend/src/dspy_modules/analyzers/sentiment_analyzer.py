@@ -8,7 +8,6 @@ from typing import List, Dict, Any
 
 from dspy_signatures.analysis.sentiment_signature import SentimentAnalysisSignature
 from utils.history_utils import create_dspy_history
-from core.config import settings
 
 
 class SentimentAnalyzer(dspy.Module):

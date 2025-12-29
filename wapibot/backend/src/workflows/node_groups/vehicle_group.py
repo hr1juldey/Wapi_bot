@@ -6,7 +6,6 @@ from workflows.shared.state import BookingState
 from nodes.selection.generic_handler import handle_selection, route_after_selection
 from nodes.atomic.send_message import node as send_message_node
 from nodes.message_builders.vehicle_options import VehicleOptionsBuilder
-from nodes.routing.resume_router import create_resume_router
 from nodes.error_handling.selection_error_handler import handle_selection_error
 
 logger = logging.getLogger(__name__)

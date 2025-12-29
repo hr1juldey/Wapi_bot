@@ -6,7 +6,6 @@ SOLID Principles:
 - Dependency Inversion: Implements MessageBuilder Protocol
 """
 
-from typing import Optional
 from workflows.shared.state import BookingState
 
 

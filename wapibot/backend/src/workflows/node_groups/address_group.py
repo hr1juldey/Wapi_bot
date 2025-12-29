@@ -1,11 +1,4 @@
-"""Address selection node group.
-
-Handles:
-- Checking if customer has multiple addresses
-- Auto-selecting if only one address
-- Showing address options if multiple (via message builder)
-- Extracting and validating user's address selection
-"""
+"""Address selection - check count, auto-select, show options, extract, validate."""
 
 import logging
 from langgraph.graph import StateGraph, END
@@ -82,15 +75,9 @@ async def validate_address_selection(state: BookingState) -> BookingState:
 
 async def send_invalid_address_selection(state: BookingState) -> BookingState:
     """Send message for invalid address selection."""
-    def error_builder(s):
-        addresses = s.get("addresses", [])
-        return f"Please reply with a valid number between 1 and {len(addresses)}."
-
-    return await handle_selection_error(
-        state,
-        awaiting_step="awaiting_address_selection",
-        error_message_builder=error_builder
-    )
+    def error_msg(s):
+        return f"Please reply with a valid number between 1 and {len(s.get('addresses', []))}."
+    return await handle_selection_error(state, awaiting_step="awaiting_address_selection", error_message_builder=error_msg)
 
 
 def route_address_count(state: BookingState) -> str:
@@ -125,58 +112,22 @@ route_address_entry = create_resume_router(
 
 
 def create_address_group() -> StateGraph:
-    """Create address selection node group."""
+    """Create address selection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("check_address_count", check_address_count)
     workflow.add_node("show_address_options", show_address_options)
     workflow.add_node("extract_address_selection", extract_address_selection)
     workflow.add_node("validate_address_selection", validate_address_selection)
     workflow.add_node("send_invalid_address_selection", send_invalid_address_selection)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_address_entry,
-        {
-            "check_count": "check_address_count",
-            "extract_selection": "extract_address_selection"
-        }
-    )
-
-    # Route based on address count
-    workflow.add_conditional_edges(
-        "check_address_count",
-        route_address_count,
-        {
-            "auto_selected": END,  # Single address, skip to end
-            "show_options": "show_address_options",
-            "error": END  # No addresses, should error upstream
-        }
-    )
-
-    # After showing options, END and wait for user input
+    workflow.add_conditional_edges("entry", route_address_entry,
+        {"check_count": "check_address_count", "extract_selection": "extract_address_selection"})
+    workflow.add_conditional_edges("check_address_count", route_address_count,
+        {"auto_selected": END, "show_options": "show_address_options", "error": END})
     workflow.add_edge("show_address_options", END)
-
-    # After extracting selection, validate it
     workflow.add_edge("extract_address_selection", "validate_address_selection")
-
-    # Route based on validation
-    workflow.add_conditional_edges(
-        "validate_address_selection",
-        route_address_validation,
-        {
-            "valid": END,  # Valid selection, proceed
-            "invalid": "send_invalid_address_selection"
-        }
-    )
-
-    # After invalid message, END and wait for retry
+    workflow.add_conditional_edges("validate_address_selection", route_address_validation,
+        {"valid": END, "invalid": "send_invalid_address_selection"})
     workflow.add_edge("send_invalid_address_selection", END)
-
     return workflow.compile()

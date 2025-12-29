@@ -5,11 +5,10 @@ with comprehensive validation rules using Pydantic v2 types.
 """
 
 from datetime import date, timedelta
-from typing import Optional, Annotated
+from typing import Optional
 from pydantic import (
     BaseModel,
     Field,
-    FutureDate,
     field_validator,
     model_validator,
     computed_field,

@@ -4,11 +4,7 @@ import pytest
 from workflows.existing_user_booking import (
     extract_service_selection_node,
     extract_slot_selection_node,
-    extract_confirmation_node,
-    check_customer_exists,
-    check_service_selected,
-    check_slot_selected,
-    check_confirmation
+    extract_confirmation_node
 )
 
 

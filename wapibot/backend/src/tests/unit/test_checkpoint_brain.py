@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime
 from nodes.atomic import checkpoint
 from workflows.shared.state import BookingState
 

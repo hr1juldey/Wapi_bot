@@ -1,6 +1,5 @@
 """Unit tests for transformers."""
 
-import pytest
 from transformers.filter_services import FilterServicesByVehicle
 from transformers.format_slot_options import FormatSlotOptions
 

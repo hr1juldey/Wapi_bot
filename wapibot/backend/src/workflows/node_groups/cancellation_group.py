@@ -1,10 +1,9 @@
 """Cancellation policy node group - handles booking cancellations with policy checks."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
-from nodes.atomic.send_message import node as send_message_node
 
 logger = logging.getLogger(__name__)
 

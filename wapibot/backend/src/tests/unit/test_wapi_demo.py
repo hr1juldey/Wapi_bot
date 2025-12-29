@@ -36,10 +36,8 @@ Usage:
 
 import asyncio
 import sys
-import time
 import httpx
 from pathlib import Path
-from datetime import datetime
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -111,7 +109,7 @@ async def monitor_ngrok_webhooks(expected_phone: str, lookback_minutes: int = 2)
                                     "status": status_code,
                                     "time": start_time_str
                                 })
-                        except Exception as e:
+                        except Exception:
                             # Failed to decode/parse this webhook
                             pass
 

@@ -5,7 +5,7 @@ Protocol-based design allows ANY media builder implementation.
 """
 
 import logging
-from typing import Protocol, Optional, Dict, Any
+from typing import Protocol, Dict, Any
 from workflows.shared.state import BookingState
 from clients.wapi import get_wapi_client
 

@@ -1,11 +1,4 @@
-"""Addon selection node group.
-
-Handles:
-- Fetching available addons for selected service
-- Showing addon options with prices (via message builder)
-- Extracting user's addon selection (supports multiple or skip)
-- Validating addon selection
-"""
+"""Addon selection - fetch, show options, extract (multiple/skip), validate."""
 
 import logging
 import re
@@ -24,31 +17,18 @@ logger = logging.getLogger(__name__)
 async def fetch_addons(state: BookingState) -> BookingState:
     """Fetch available addons for selected service from Frappe API."""
     client = get_yawlit_client()
-
     def extract_service_id(s):
-        selected_service = s.get("selected_service", {})
-        return {"service_id": selected_service.get("name")}
-
+        return {"service_id": s.get("selected_service", {}).get("name")}
     logger.info("➕ Fetching optional addons from API...")
-    result = await call_frappe_node(
-        state,
-        client.service_catalog.get_optional_addons,
-        "addons_response",
-        state_extractor=extract_service_id
-    )
-
-    # Extract addons from response
+    result = await call_frappe_node(state, client.service_catalog.get_optional_addons, "addons_response", state_extractor=extract_service_id)
     addons_response = result.get("addons_response", {})
     addons = addons_response.get("message", {}).get("optional_addons", [])
-
-    # Store unwrapped addons in state
     result["available_addons"] = addons
     if not addons:
-        logger.info("No addons available for this service - auto-skipping")
+        logger.info("No addons available - auto-skipping")
         result["skipped_addons"] = True
         result["addon_selection_complete"] = True
         result["addon_ids"] = []
-
     return result
 
 
@@ -66,8 +46,6 @@ async def extract_addon_selection(state: BookingState) -> BookingState:
     """Extract addon selection from user message."""
     user_message = state.get("user_message", "").strip().lower()
     available_addons = state.get("available_addons", [])
-
-    # Check for skip keywords
     if any(keyword in user_message for keyword in ["none", "skip", "no", "nah"]):
         state["skipped_addons"] = True
         state["addon_selection_complete"] = True
@@ -75,47 +53,26 @@ async def extract_addon_selection(state: BookingState) -> BookingState:
         state["selected_addons"] = []
         logger.info("➕ User skipped addon selection")
         return state
-
-    # Try to parse numbers
     selected_indices = []
     selected_addons = []
-    addon_ids = []
-
     numbers = re.findall(r'\d+', user_message)
     for num in numbers:
         try:
             idx = int(num)
-            if 1 <= idx <= len(available_addons):
-                if idx not in selected_indices:  # Avoid duplicates
-                    selected_indices.append(idx)
-                    addon = available_addons[idx - 1]
-                    selected_addons.append(addon)
-                    addon_ids.append(addon.get("name"))  # Use addon document name as ID
+            if 1 <= idx <= len(available_addons) and idx not in selected_indices:
+                selected_indices.append(idx)
+                selected_addons.append(available_addons[idx - 1])
         except ValueError:
             continue
-
     if selected_indices:
         state["selected_addons"] = selected_addons
-
-        # Build proper addon structure for API: [{"addon": id, "quantity": 1, "unit_price": price}, ...]
-        formatted_addons = []
-        for addon in selected_addons:
-            formatted_addons.append({
-                "addon": addon.get("name"),           # AddOn DocType ID
-                "quantity": 1,
-                "unit_price": addon.get("unit_price", 0)
-            })
-
-        state["addon_ids"] = formatted_addons
+        state["addon_ids"] = [{"addon": a.get("name"), "quantity": 1, "unit_price": a.get("unit_price", 0)} for a in selected_addons]
         state["addon_selection_complete"] = True
         state["skipped_addons"] = False
-        addon_names = [a.get("addon_name", a.get("name")) for a in selected_addons]
-        logger.info(f"➕ Addons selected: {addon_names} (options {selected_indices})")
-        logger.info(f"➕ Addon structure: {formatted_addons}")
+        logger.info(f"➕ Addons selected: {[a.get('addon_name', a.get('name')) for a in selected_addons]} (options {selected_indices})")
     else:
         state["addon_selection_complete"] = False
         logger.warning(f"Could not parse addon selection: {user_message}")
-
     return state
 
 
@@ -129,20 +86,9 @@ async def validate_addon_selection(state: BookingState) -> BookingState:
 
 async def send_invalid_addon_selection(state: BookingState) -> BookingState:
     """Send message for invalid addon selection."""
-    def error_builder(s):
-        available_addons = s.get("available_addons", [])
-        return f"""Please reply with valid numbers between 1 and {len(available_addons)}, or "Skip" if you don't want any addons.
-
-Examples:
-• "1" - Select addon 1
-• "1 3" - Select addons 1 and 3
-• "Skip" - No addons"""
-
-    return await handle_selection_error(
-        state,
-        awaiting_step="awaiting_addon_selection",
-        error_message_builder=error_builder
-    )
+    def error_msg(s):
+        return f'Please reply with numbers (1-{len(s.get("available_addons", []))}) or "Skip".\nE.g., "1", "1 3", "Skip"'
+    return await handle_selection_error(state, awaiting_step="awaiting_addon_selection", error_message_builder=error_msg)
 
 
 def route_addon_availability(state: BookingState) -> str:
@@ -173,57 +119,22 @@ route_addon_entry = create_resume_router(
 
 
 def create_addon_group() -> StateGraph:
-    """Create addon selection node group."""
+    """Create addon selection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("fetch_addons", fetch_addons)
     workflow.add_node("show_addon_options", show_addon_options)
     workflow.add_node("extract_addon_selection", extract_addon_selection)
     workflow.add_node("validate_addon_selection", validate_addon_selection)
     workflow.add_node("send_invalid_addon_selection", send_invalid_addon_selection)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_addon_entry,
-        {
-            "fetch_addons": "fetch_addons",
-            "extract_selection": "extract_addon_selection"
-        }
-    )
-
-    # Route based on addon availability
-    workflow.add_conditional_edges(
-        "fetch_addons",
-        route_addon_availability,
-        {
-            "no_addons": END,  # No addons, skip to end
-            "show_options": "show_addon_options"
-        }
-    )
-
-    # After showing options, END and wait for user input
+    workflow.add_conditional_edges("entry", route_addon_entry,
+        {"fetch_addons": "fetch_addons", "extract_selection": "extract_addon_selection"})
+    workflow.add_conditional_edges("fetch_addons", route_addon_availability,
+        {"no_addons": END, "show_options": "show_addon_options"})
     workflow.add_edge("show_addon_options", END)
-
-    # After extracting selection, validate it
     workflow.add_edge("extract_addon_selection", "validate_addon_selection")
-
-    # Route based on validation
-    workflow.add_conditional_edges(
-        "validate_addon_selection",
-        route_addon_validation,
-        {
-            "valid": END,  # Valid selection, proceed
-            "invalid": "send_invalid_addon_selection"
-        }
-    )
-
-    # After invalid message, END and wait for retry
+    workflow.add_conditional_edges("validate_addon_selection", route_addon_validation,
+        {"valid": END, "invalid": "send_invalid_addon_selection"})
     workflow.add_edge("send_invalid_addon_selection", END)
-
     return workflow.compile()

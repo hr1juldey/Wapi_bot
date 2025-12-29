@@ -7,12 +7,8 @@ Follows SOLID Single Responsibility Principle - schemas separate from routing.
 from pydantic import BaseModel, Field
 from schemas.examples import (
     EXAMPLE_SESSION_UUID,
-    EXAMPLE_SESSION_UUID_ALT,
-    EXAMPLE_SESSION_UUID_THIRD,
     EXAMPLE_ADMIN_EMAIL,
-    EXAMPLE_ADMIN_EMAIL_ALT,
     EXAMPLE_UTR_NUMBER,
-    EXAMPLE_UTR_NUMBER_ALT,
     EXAMPLE_PAYMENT_AMOUNT_HATCHBACK,
     EXAMPLE_PAYMENT_AMOUNT_SUV,
     EXAMPLE_TIMESTAMP_CREATED,

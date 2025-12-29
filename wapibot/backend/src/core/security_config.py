@@ -5,7 +5,6 @@ Auto-hardens security settings in production environment.
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import Optional
 
 
 class SecuritySettings(BaseSettings):

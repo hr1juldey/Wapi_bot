@@ -70,14 +70,14 @@ async def confirm_payment(
             logger.error(f"❌ Payment session not found: {request.session_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Payment session not found",
+                detail="Payment session not found",
             )
 
         if session.status == PaymentStatus.CONFIRMED:
             logger.warning(f"⚠️ Payment already confirmed: {request.session_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Payment already confirmed",
+                detail="Payment already confirmed",
             )
 
         # Update PaymentSession

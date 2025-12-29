@@ -3,8 +3,6 @@
 from typing import Literal, Optional, List
 from pydantic import BaseModel, Field
 from schemas.examples import (
-    EXAMPLE_DREAM_TASK_ID,
-    EXAMPLE_TRAIN_TASK_ID,
     EXAMPLE_DECISION_COUNT,
     EXAMPLE_CONVERSATION_THRESHOLD,
 )

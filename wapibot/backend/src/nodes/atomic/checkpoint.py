@@ -15,7 +15,6 @@ Blender Design:
 import logging
 import json
 import uuid
-from typing import Optional
 from datetime import datetime
 from workflows.shared.state import BookingState
 from core.brain_config import get_brain_settings

@@ -5,14 +5,12 @@ Provides common fixtures for database, mocks, and test data.
 
 import pytest
 import asyncio
-from pathlib import Path
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
-from db.db_models import ConversationStateTable, ConversationHistoryTable
 
 
 @pytest.fixture(scope="session")

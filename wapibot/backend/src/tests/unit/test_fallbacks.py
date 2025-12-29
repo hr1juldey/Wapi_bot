@@ -3,7 +3,6 @@
 Tests regex-based extraction fallbacks for email, phone, and name.
 """
 
-import pytest
 from fallbacks.email_fallback import RegexEmailExtractor
 from fallbacks.phone_fallback import RegexPhoneExtractor
 from fallbacks.name_fallback import RegexNameExtractor

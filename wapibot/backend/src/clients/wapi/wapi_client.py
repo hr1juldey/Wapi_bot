@@ -9,9 +9,6 @@ import httpx
 
 from core.config import settings
 from clients.wapi.schemas import (
-    SendMessageRequest,
-    SendMediaRequest,
-    WAPIResponse,
     ContactCreate
 )
 

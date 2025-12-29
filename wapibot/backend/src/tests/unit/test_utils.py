@@ -3,7 +3,6 @@
 Tests validation_utils and history_utils.
 """
 
-import pytest
 from utils.validation_utils import map_confidence_to_float
 from utils.history_utils import create_dspy_history
 from core.config import settings

@@ -233,7 +233,7 @@ async def wapi_webhook(
                 brain_result = await brain_workflow.ainvoke(result)
                 # Update state with brain observations
                 result.update(brain_result)
-                logger.info(f"🧠 Brain processing complete")
+                logger.info("🧠 Brain processing complete")
             except Exception as e:
                 logger.error(f"🧠 Brain processing failed: {e}", exc_info=True)
                 # Brain failure doesn't block main workflow

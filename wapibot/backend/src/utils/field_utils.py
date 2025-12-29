@@ -4,7 +4,7 @@ Provides helpers for getting/setting nested fields using dot notation.
 Supports the atomic node architecture.
 """
 
-from typing import Any, Optional
+from typing import Any
 from workflows.shared.state import BookingState
 
 

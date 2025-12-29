@@ -19,7 +19,6 @@ from utils.field_utils import set_nested_field
 logger = logging.getLogger(__name__)
 
 # Import extractor functions (separated for file size limit compliance)
-from fallbacks.pattern_extractors import extract_time_range, extract_date
 
 
 async def node(

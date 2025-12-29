@@ -19,14 +19,12 @@ from langgraph.graph import StateGraph, END
 from workflows.shared.state import BookingState
 from nodes.atomic import (
     extract_node,
-    validate_node,
     confidence_gate_node,
     get_gate_decision,
     scan_node,
     merge_node
 )
 from dspy_modules.extractors.name_extractor import NameExtractor
-from models.customer import Name
 from fallbacks.name_fallback import RegexNameExtractor
 
 

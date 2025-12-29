@@ -7,7 +7,6 @@ Handles:
 - A/B testing support (load specific versions)
 """
 
-import os
 import json
 import logging
 from datetime import datetime
@@ -199,7 +198,7 @@ class ModuleVersioning:
         meta_b_files = list(module_dir.glob(f"{version_b}_*_metadata.json"))
 
         if not meta_a_files or not meta_b_files:
-            raise FileNotFoundError(f"Metadata not found for comparison")
+            raise FileNotFoundError("Metadata not found for comparison")
 
         with open(meta_a_files[0], 'r') as f:
             meta_a = json.load(f)
