@@ -1,19 +1,4 @@
-"""Service selection node group.
-
-Handles:
-- Fetching service catalog
-- Displaying services to user
-- Processing service selection
-- Error handling
-
-Replaces 6 old nodes:
-- fetch_services
-- send_service_catalog
-- await_service_selection
-- process_service_selection
-- handle_service_selection_error
-- route_service_selection
-"""
+"""Service selection node group - fetch catalog, display, process selection, handle errors."""
 
 import logging
 from langgraph.graph import StateGraph, END
@@ -105,43 +90,19 @@ route_service_entry = create_resume_router(
 
 
 def create_service_group() -> StateGraph:
-    """Create service selection node group."""
+    """Create service selection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("fetch_services", fetch_services)
     workflow.add_node("show_catalog", show_service_catalog)
     workflow.add_node("process_selection", process_service_selection)
     workflow.add_node("send_error", send_service_error)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_service_entry,
-        {
-            "fetch_services": "fetch_services",
-            "process_selection": "process_selection"
-        }
-    )
-
+    workflow.add_conditional_edges("entry", route_service_entry,
+        {"fetch_services": "fetch_services", "process_selection": "process_selection"})
     workflow.add_edge("fetch_services", "show_catalog")
-    # After showing catalog, END and wait for user input (pause)
     workflow.add_edge("show_catalog", END)
-
-    workflow.add_conditional_edges(
-        "process_selection",
-        route_after_selection,
-        {
-            "selection_error": "send_error",
-            "selection_success": END
-        }
-    )
-
-    # Error path: send error and END (don't loop!)
+    workflow.add_conditional_edges("process_selection", route_after_selection,
+        {"selection_error": "send_error", "selection_success": END})
     workflow.add_edge("send_error", END)
-
     return workflow.compile()

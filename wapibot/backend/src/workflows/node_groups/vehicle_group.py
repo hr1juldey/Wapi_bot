@@ -1,18 +1,4 @@
-"""Vehicle selection node group.
-
-Handles:
-- Displaying vehicle options (if multiple)
-- Processing user selection
-- Error handling for invalid selections
-
-Replaces 6 old nodes:
-- send_vehicle_options
-- await_vehicle_selection
-- process_vehicle_selection
-- handle_vehicle_selection_error
-- validate_vehicle_selection
-- route_vehicle_selection
-"""
+"""Vehicle selection node group - display options, process selection, handle errors."""
 
 import logging
 from langgraph.graph import StateGraph, END
@@ -92,53 +78,19 @@ async def skip_vehicle_selection(state: BookingState) -> BookingState:
 
 
 def create_vehicle_group() -> StateGraph:
-    """Create vehicle selection node group.
-
-    Inputs:
-    - state["vehicle_options"]: List of vehicles
-
-    Outputs:
-    - state["vehicle"]: Selected vehicle
-    - state["vehicle_selected"]: True when done
-    """
+    """Create vehicle selection workflow."""
     workflow = StateGraph(BookingState)
-
-    # Add nodes
-    workflow.add_node("entry", lambda s: s)  # Pass-through entry
+    workflow.add_node("entry", lambda s: s)
     workflow.add_node("skip_selection", skip_vehicle_selection)
     workflow.add_node("show_options", show_vehicle_options)
     workflow.add_node("process_selection", process_vehicle_selection)
     workflow.add_node("send_error", send_vehicle_error)
-
-    # Start at entry for routing
     workflow.set_entry_point("entry")
-
-    # Route based on resume state
-    workflow.add_conditional_edges(
-        "entry",
-        route_vehicle_entry,
-        {
-            "skip": "skip_selection",
-            "show_options": "show_options",
-            "process_selection": "process_selection"
-        }
-    )
-
+    workflow.add_conditional_edges("entry", route_vehicle_entry,
+        {"skip": "skip_selection", "show_options": "show_options", "process_selection": "process_selection"})
     workflow.add_edge("skip_selection", END)
-    # After showing options, END and wait for user input (pause)
     workflow.add_edge("show_options", END)
-
-    # After processing selection
-    workflow.add_conditional_edges(
-        "process_selection",
-        route_after_selection,
-        {
-            "selection_error": "send_error",  # Invalid selection
-            "selection_success": END  # Valid selection, done
-        }
-    )
-
-    # Error path: send error and END (don't loop!)
+    workflow.add_conditional_edges("process_selection", route_after_selection,
+        {"selection_error": "send_error", "selection_success": END})
     workflow.add_edge("send_error", END)
-
     return workflow.compile()
